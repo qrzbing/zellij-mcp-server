@@ -23,6 +23,9 @@ pub enum Command {
     },
     // Layout Commands
     ShowLayout,
+    NewTab {
+        name: Option<String>,
+    },
     Switch {
         tab_name: String,
     },
@@ -74,6 +77,14 @@ impl CommandParser {
                 })
             }
             // Tab Commands
+            "new" | "n" => {
+                if parts.len() < 2 {
+                    anyhow::bail!("Usage: new <tab-name>");
+                }
+                Ok(Command::NewTab {
+                    name: Some(parts[1].to_string()),
+                })
+            }
             "layout" | "show-layout" => Ok(Command::ShowLayout),
             "switch" | "s" => {
                 if parts.len() < 2 {
@@ -151,6 +162,10 @@ impl CommandExecutor {
                 Ok(false)
             }
             // Layout Commands
+            Command::NewTab { name } => {
+                Self::new_tab(context, name.clone())?;
+                Ok(false)
+            }
             Command::ShowLayout => {
                 Self::show_layout(context)?;
                 Ok(false)
@@ -212,6 +227,28 @@ impl CommandExecutor {
             }
         }
 
+        Ok(())
+    }
+
+    fn new_tab(context: &mut CliContext, name: Option<String>) -> anyhow::Result<()> {
+        let mgr = context
+            .manager_mut()
+            .with_context(|| "Not attached to any session")?;
+
+        mgr.new_tab(name.clone())?;
+        let msg = format!("✓ Created new tab");
+        println!("{}", msg.green());
+        Ok(())
+    }
+
+    fn close_tab(context: &mut CliContext) -> anyhow::Result<()> {
+        let mgr = context
+            .manager_mut()
+            .with_context(|| "Not attached to any session")?;
+
+        mgr.close_tab()?;
+
+        println!("{}", "✓ Closed current tab".green());
         Ok(())
     }
 
@@ -308,6 +345,6 @@ impl CommandExecutor {
     }
 
     fn show_help() {
-        println!("{}", include_str!("../docs/cli-help.md"));
+        println!("{}", include_str!("./cli-help.md"));
     }
 }

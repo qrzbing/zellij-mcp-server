@@ -8,6 +8,34 @@ use zellij_utils::cli::CliAction;
 use super::ZellijSessionManager;
 
 impl ZellijSessionManager {
+    pub fn new_tab(&mut self, name: Option<String>) -> Result<Option<String>> {
+        self.send_action(
+            CliAction::NewTab {
+                name: name.clone(),
+                cwd: None,
+                layout: None,
+                layout_dir: None,
+            },
+            None,
+        )?;
+
+        debug!("Created new tab: {:?}", name);
+
+        self.refresh_current_tab()?;
+
+        Ok(name)
+    }
+
+    pub fn close_tab(&mut self) -> Result<()> {
+        self.send_action(CliAction::CloseTab, None)?;
+
+        debug!("Closed current tab");
+
+        let _ = self.refresh_current_tab();
+
+        Ok(())
+    }
+
     pub fn current_tab_name(&self) -> Option<&str> {
         self.current_tab_name.as_deref()
     }
