@@ -9,7 +9,11 @@ use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 mod cli;
+mod interactive;
+mod manager;
 mod server;
+
+use interactive::InteractiveCli;
 use server::ZellijMcpServer;
 
 pub async fn run_mcp_server(bind_address: String) -> anyhow::Result<()> {
@@ -76,13 +80,24 @@ pub async fn run_mcp_server(bind_address: String) -> anyhow::Result<()> {
 fn main() {
     let cli = cli::Cli::parse();
     match cli.command {
-        cli::McpOptions::Run { bind } => {
-            println!("Running on {}", bind);
+        cli::McpOptions::Run { bind_address } => {
+            println!("Running on {}", bind_address);
             if let Err(e) = tokio::runtime::Runtime::new()
                 .unwrap()
-                .block_on(run_mcp_server(bind))
+                .block_on(run_mcp_server(bind_address))
             {
                 eprintln!("MCP server error: {}", e);
+                std::process::exit(1);
+            }
+        }
+        cli::McpOptions::Cli {
+            zellij_path,
+            socket_path,
+        } => {
+            let mut interactive_cli = InteractiveCli::new(socket_path.into(), zellij_path)
+                .expect("Failed to initialize CLI");
+            if let Err(e) = interactive_cli.run() {
+                eprintln!("CLI error: {}", e);
                 std::process::exit(1);
             }
         }

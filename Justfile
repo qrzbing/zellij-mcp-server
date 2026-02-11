@@ -4,5 +4,5 @@ _default:
 build:
     cargo build --release
 
-run *args: build
-    cargo run --release -- run {{args}}
+tool *args: build
+    cargo run --release -- {{args}}
