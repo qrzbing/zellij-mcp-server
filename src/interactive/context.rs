@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use crate::manager::session::ZellijSessionManager;
+use crate::manager::ZellijSessionManager;
 
 #[derive(Debug)]
 pub struct CliContext {
@@ -44,5 +44,13 @@ impl CliContext {
             Some(ref manager) => Some(manager.session_name()),
             None => None,
         }
+    }
+
+    pub fn is_attached(&self) -> bool {
+        self.manager.is_some()
+    }
+
+    pub fn manager(&self) -> Option<&ZellijSessionManager> {
+        self.manager.as_ref()
     }
 }

@@ -1,15 +1,18 @@
-use anyhow::Ok;
+use anyhow::{Context, Ok};
 use colored::Colorize;
+use zellij_utils::cli::CliAction;
 
-use crate::{interactive::context::CliContext, manager::session::ZellijSessionManager};
+use crate::{interactive::context::CliContext, manager::ZellijSessionManager};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Command {
     // Session Commands
     Attach { session_name: String },
     Detach,
-    ListSessions,
-    //
+    List { filter: String },
+    // Layout Commands
+    ShowLayout,
+    // Other Commands
     Status,
     Help,
     Exit,
@@ -39,8 +42,17 @@ impl CommandParser {
                 })
             }
             "detach" | "d" => Ok(Command::Detach),
-            "list-sessions" | "ls" => Ok(Command::ListSessions),
-            //
+            "list" | "ls" => {
+                if parts.len() < 2 {
+                    anyhow::bail!("Usage: ls [session | tab]");
+                }
+                Ok(Command::List {
+                    filter: parts[1].to_string(),
+                })
+            }
+            // Layout Commands
+            "layout" | "show-layout" => Ok(Command::ShowLayout),
+            // Other Commands
             "status" => Ok(Command::Status),
             "help" | "h" | "?" => Ok(Command::Help),
             "exit" | "quit" | "q" => Ok(Command::Exit),
@@ -67,11 +79,25 @@ impl CommandExecutor {
                 Self::detach_session(context);
                 Ok(false)
             }
-            Command::ListSessions => {
-                Self::list_sessions(context)?;
+            Command::List { filter } => {
+                match filter.as_str() {
+                    "session" | "s" => {
+                        Self::list_sessions(context)?;
+                    }
+                    "tab" | "t" => {
+                        Self::list_tabs(context)?;
+                    }
+                    _ => {
+                        println!("Unknown filter: {}", filter);
+                    }
+                }
                 Ok(false)
             }
-
+            // Layout Commands
+            Command::ShowLayout => {
+                Self::show_layout(context)?;
+                Ok(false)
+            }
             // Other Commands
             Command::Status => {
                 Self::show_status(context);
@@ -120,6 +146,44 @@ impl CommandExecutor {
                 }
             }
         }
+
+        Ok(())
+    }
+
+    fn list_tabs(context: &CliContext) -> anyhow::Result<()> {
+        let mgr = context
+            .manager()
+            .with_context(|| "Failed to retrieve manager context")?;
+        let tabs = mgr.list_tabs()?;
+
+        if tabs.is_empty() {
+            println!("  {}", "No active sessions found.".dimmed());
+        } else {
+            let current_tab_name = mgr.current_tab_name();
+            for tab in tabs {
+                if Some(tab.as_str()) == current_tab_name.as_deref() {
+                    println!("  {} {}", "→".green(), tab.green().bold());
+                } else {
+                    println!("  - {}", tab);
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    fn show_layout(context: &CliContext) -> anyhow::Result<()> {
+        if !context.is_attached() {
+            anyhow::bail!("Not attached to any session");
+        }
+
+        let manager = context
+            .manager()
+            .with_context(|| "Failed to retrieve manager context")?;
+        let layout = manager.send_action(CliAction::DumpLayout, None)?;
+
+        println!("{}", "Layout:".bold());
+        println!("{}", layout);
 
         Ok(())
     }
