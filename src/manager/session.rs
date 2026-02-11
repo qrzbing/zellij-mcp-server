@@ -1,6 +1,8 @@
 use std::{os::unix::fs::FileTypeExt, path::PathBuf};
 
 use anyhow::Result;
+use tracing::debug;
+use zellij_utils::cli::CliAction;
 
 use super::ZellijSessionManager;
 
@@ -36,5 +38,19 @@ impl ZellijSessionManager {
         }
 
         Ok(sessions)
+    }
+
+    /// Rename the current session
+    pub fn rename_session(&self, new_name: String) -> Result<()> {
+        self.send_action(
+            CliAction::RenameSession {
+                name: new_name.clone(),
+            },
+            None,
+        )?;
+
+        debug!("Renamed session to: {}", new_name);
+
+        Ok(())
     }
 }

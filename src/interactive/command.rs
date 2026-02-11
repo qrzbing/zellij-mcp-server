@@ -6,15 +6,31 @@ use zellij_utils::cli::CliAction;
 use crate::{interactive::context::CliContext, manager::ZellijSessionManager};
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum RenameTarget {
+    Tab,
+    Session,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum Command {
     // Session Commands
-    Attach { session_name: String },
+    Attach {
+        session_name: String,
+    },
     Detach,
-    List { filter: String },
+    List {
+        filter: String,
+    },
     // Layout Commands
     ShowLayout,
-    Switch { tab_name: String },
+    Switch {
+        tab_name: String,
+    },
     // Other Commands
+    Rename {
+        target: RenameTarget,
+        name: Option<String>,
+    },
     Status,
     Help,
     Exit,
@@ -57,7 +73,7 @@ impl CommandParser {
                     filter: parts[1].to_string(),
                 })
             }
-            // Layout Commands
+            // Tab Commands
             "layout" | "show-layout" => Ok(Command::ShowLayout),
             "switch" | "s" => {
                 if parts.len() < 2 {
@@ -68,6 +84,32 @@ impl CommandParser {
                 })
             }
             // Other Commands
+            "rename" | "r" => {
+                if parts.len() < 2 {
+                    anyhow::bail!("Usage: rename <tab|session> [name] [--undo|-u]");
+                }
+
+                let target = match parts[1].as_str() {
+                    "tab" | "t" => RenameTarget::Tab,
+                    "session" | "s" => RenameTarget::Session,
+                    _ => anyhow::bail!(
+                        "Unknown rename target: '{}'. Use 'tab' or 'session'.",
+                        parts[1]
+                    ),
+                };
+
+                let is_undo = parts.iter().any(|p| p == "--undo" || p == "-u");
+
+                let name = if is_undo {
+                    None
+                } else if parts.len() < 3 {
+                    anyhow::bail!("Usage: rename {} <name>", parts[1]);
+                } else {
+                    Some(parts[2].clone())
+                };
+
+                Ok(Command::Rename { target, name })
+            }
             "status" => Ok(Command::Status),
             "help" | "h" | "?" => Ok(Command::Help),
             "exit" | "quit" | "q" => Ok(Command::Exit),
@@ -118,6 +160,10 @@ impl CommandExecutor {
                 Ok(false)
             }
             // Other Commands
+            Command::Rename { target, name } => {
+                Self::rename(context, target, name)?;
+                Ok(false)
+            }
             Command::Status => {
                 Self::show_status(context);
                 Ok(false)
@@ -197,6 +243,38 @@ impl CommandExecutor {
             .with_context(|| "Failed to retrieve manager context")?;
         mgr.switch_to_tab(tab_name.clone())?;
         println!("Switched to tab: {}", tab_name);
+        Ok(())
+    }
+
+    fn rename(
+        context: &mut CliContext,
+        target: RenameTarget,
+        name: Option<String>,
+    ) -> anyhow::Result<()> {
+        let mgr = context
+            .manager_mut()
+            .with_context(|| "Not attached to any session")?;
+
+        match target {
+            RenameTarget::Tab => {
+                if let Some(name) = name {
+                    mgr.rename_tab(name.clone())?;
+                    println!("✓ Renamed current tab to: {}", name);
+                } else {
+                    mgr.undo_rename_tab()?;
+                    println!("✓ Restored tab to default name");
+                }
+            }
+            RenameTarget::Session => {
+                if let Some(name) = name {
+                    mgr.rename_session(name.clone())?;
+                    println!("✓ Renamed session to: {}", name);
+                } else {
+                    anyhow::bail!("Cannot undo session rename. Please provide a new name.");
+                }
+            }
+        }
+
         Ok(())
     }
 

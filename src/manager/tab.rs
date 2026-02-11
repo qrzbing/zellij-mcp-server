@@ -80,4 +80,34 @@ impl ZellijSessionManager {
 
         Ok(())
     }
+
+    /// Rename the current tab
+    pub fn rename_tab(&mut self, new_name: String) -> Result<()> {
+        self.send_action(
+            CliAction::RenameTab {
+                name: new_name.clone(),
+            },
+            None,
+        )?;
+
+        self.current_tab_name = Some(new_name.clone());
+
+        debug!("Renamed current tab to: {}", new_name);
+
+        Ok(())
+    }
+
+    /// Undo tab rename (restore to default name like "Tab #1")
+    pub fn undo_rename_tab(&mut self) -> Result<()> {
+        self.send_action(CliAction::UndoRenameTab, None)?;
+
+        self.refresh_current_tab()?;
+
+        debug!(
+            "Undone tab rename, current tab: {:?}",
+            self.current_tab_name
+        );
+
+        Ok(())
+    }
 }
