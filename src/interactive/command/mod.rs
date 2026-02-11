@@ -3,7 +3,10 @@ use colored::Colorize;
 use shlex;
 use zellij_utils::cli::CliAction;
 
-use crate::{interactive::context::CliContext, manager::ZellijSessionManager};
+use crate::interactive::context::CliContext;
+
+mod session;
+mod tab;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum RenameTarget {
@@ -23,6 +26,7 @@ pub enum Command {
     },
     // Layout Commands
     ShowLayout,
+    CloseTab,
     NewTab {
         name: Option<String>,
     },
@@ -85,6 +89,7 @@ impl CommandParser {
                     name: Some(parts[1].to_string()),
                 })
             }
+            "close" => Ok(Command::CloseTab),
             "layout" | "show-layout" => Ok(Command::ShowLayout),
             "switch" | "s" => {
                 if parts.len() < 2 {
@@ -162,6 +167,10 @@ impl CommandExecutor {
                 Ok(false)
             }
             // Layout Commands
+            Command::CloseTab => {
+                Self::close_tab(context)?;
+                Ok(false)
+            }
             Command::NewTab { name } => {
                 Self::new_tab(context, name.clone())?;
                 Ok(false)
@@ -194,93 +203,6 @@ impl CommandExecutor {
                 Ok(true)
             }
         }
-    }
-
-    fn attach_session(session_name: String, context: &mut CliContext) -> anyhow::Result<()> {
-        context.attach(session_name.clone())?;
-        println!(
-            "{} {}",
-            "✓ Attached to session:".green(),
-            session_name.bold()
-        );
-        Ok(())
-    }
-
-    fn detach_session(context: &mut CliContext) {
-        context.detach();
-        println!("{}", "✓ Detached from session.".green());
-    }
-
-    fn list_sessions(context: &CliContext) -> anyhow::Result<()> {
-        let sessions = ZellijSessionManager::list_sessions(&context.socket_dir)?;
-
-        if sessions.is_empty() {
-            println!("  {}", "No active sessions found.".dimmed());
-        } else {
-            let current_session_name = context.current_session_name();
-            for session in sessions {
-                if Some(session.as_str()) == current_session_name.as_deref() {
-                    println!("  {} {}", "→".green(), session.green().bold());
-                } else {
-                    println!("  - {}", session);
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    fn new_tab(context: &mut CliContext, name: Option<String>) -> anyhow::Result<()> {
-        let mgr = context
-            .manager_mut()
-            .with_context(|| "Not attached to any session")?;
-
-        mgr.new_tab(name.clone())?;
-        let msg = format!("✓ Created new tab");
-        println!("{}", msg.green());
-        Ok(())
-    }
-
-    fn close_tab(context: &mut CliContext) -> anyhow::Result<()> {
-        let mgr = context
-            .manager_mut()
-            .with_context(|| "Not attached to any session")?;
-
-        mgr.close_tab()?;
-
-        println!("{}", "✓ Closed current tab".green());
-        Ok(())
-    }
-
-    fn list_tabs(context: &CliContext) -> anyhow::Result<()> {
-        let mgr = context
-            .manager()
-            .with_context(|| "Failed to retrieve manager context")?;
-        let tabs = mgr.list_tabs()?;
-
-        if tabs.is_empty() {
-            println!("  {}", "No active sessions found.".dimmed());
-        } else {
-            let current_tab_name = mgr.current_tab_name();
-            for tab in tabs {
-                if Some(tab.as_str()) == current_tab_name.as_deref() {
-                    println!("  {} {}", "→".green(), tab.green().bold());
-                } else {
-                    println!("  - {}", tab);
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    fn switch_to_tab(context: &mut CliContext, tab_name: String) -> anyhow::Result<()> {
-        let mgr = context
-            .manager_mut()
-            .with_context(|| "Failed to retrieve manager context")?;
-        mgr.switch_to_tab(tab_name.clone())?;
-        println!("Switched to tab: {}", tab_name);
-        Ok(())
     }
 
     fn rename(
