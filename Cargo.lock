@@ -4548,6 +4548,7 @@ dependencies = [
  "schemars",
  "serde",
  "serde_json",
+ "shlex",
  "tokio",
  "tokio-util",
  "tracing",

@@ -53,4 +53,8 @@ impl CliContext {
     pub fn manager(&self) -> Option<&ZellijSessionManager> {
         self.manager.as_ref()
     }
+
+    pub fn manager_mut(&mut self) -> Option<&mut ZellijSessionManager> {
+        self.manager.as_mut()
+    }
 }

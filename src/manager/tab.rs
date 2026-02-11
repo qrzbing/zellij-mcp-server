@@ -63,4 +63,21 @@ impl ZellijSessionManager {
 
         Ok(tab_name)
     }
+
+    pub fn switch_to_tab(&mut self, tab_name: String) -> Result<()> {
+        self.send_action(
+            CliAction::GoToTabName {
+                name: tab_name.clone(),
+                create: false,
+            },
+            None,
+        )?;
+
+        // Update cache
+        self.current_tab_name = Some(tab_name.clone());
+
+        debug!("Switched to tab: {}", tab_name);
+
+        Ok(())
+    }
 }

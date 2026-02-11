@@ -1,5 +1,6 @@
 use anyhow::{Context, Ok};
 use colored::Colorize;
+use shlex;
 use zellij_utils::cli::CliAction;
 
 use crate::{interactive::context::CliContext, manager::ZellijSessionManager};
@@ -12,6 +13,7 @@ pub enum Command {
     List { filter: String },
     // Layout Commands
     ShowLayout,
+    Switch { tab_name: String },
     // Other Commands
     Status,
     Help,
@@ -28,8 +30,13 @@ impl CommandParser {
             anyhow::bail!("Empty command");
         }
 
-        let parts: Vec<&str> = input.split_whitespace().collect();
-        let cmd = parts[0];
+        let parts: Vec<String> =
+            shlex::split(input).ok_or_else(|| anyhow::anyhow!("Failed to parse command"))?;
+        if parts.is_empty() {
+            anyhow::bail!("Empty command");
+        }
+
+        let cmd = parts[0].as_str();
 
         match cmd {
             // Session Commands
@@ -52,6 +59,14 @@ impl CommandParser {
             }
             // Layout Commands
             "layout" | "show-layout" => Ok(Command::ShowLayout),
+            "switch" | "s" => {
+                if parts.len() < 2 {
+                    anyhow::bail!("Usage: switch <tab-name>");
+                }
+                Ok(Command::Switch {
+                    tab_name: parts[1].to_string(),
+                })
+            }
             // Other Commands
             "status" => Ok(Command::Status),
             "help" | "h" | "?" => Ok(Command::Help),
@@ -96,6 +111,10 @@ impl CommandExecutor {
             // Layout Commands
             Command::ShowLayout => {
                 Self::show_layout(context)?;
+                Ok(false)
+            }
+            Command::Switch { tab_name } => {
+                Self::switch_to_tab(context, tab_name.clone())?;
                 Ok(false)
             }
             // Other Commands
@@ -169,6 +188,15 @@ impl CommandExecutor {
             }
         }
 
+        Ok(())
+    }
+
+    fn switch_to_tab(context: &mut CliContext, tab_name: String) -> anyhow::Result<()> {
+        let mgr = context
+            .manager_mut()
+            .with_context(|| "Failed to retrieve manager context")?;
+        mgr.switch_to_tab(tab_name.clone())?;
+        println!("Switched to tab: {}", tab_name);
         Ok(())
     }
 
