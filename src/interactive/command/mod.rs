@@ -1,10 +1,16 @@
+use std::collections::BTreeSet;
+
 use anyhow::{Context, Ok};
 use colored::Colorize;
 use shlex;
-use zellij_utils::cli::CliAction;
+use zellij_utils::{
+    cli::CliAction,
+    data::{BareKey, KeyModifier},
+};
 
 use crate::interactive::context::CliContext;
 
+mod readwrite;
 mod session;
 mod tab;
 
@@ -32,6 +38,18 @@ pub enum Command {
     },
     Switch {
         tab_name: String,
+    },
+    // Read Write Commands
+    Write {
+        text: String,
+        add_newline: bool,
+    },
+    WriteMultiple {
+        commands: Vec<String>,
+    },
+    SendKey {
+        key: BareKey,
+        modifiers: BTreeSet<KeyModifier>,
     },
     // Other Commands
     Rename {
@@ -97,6 +115,50 @@ impl CommandParser {
                 }
                 Ok(Command::Switch {
                     tab_name: parts[1].to_string(),
+                })
+            }
+            // Read Write Commands
+            "write" | "w" => {
+                if parts.len() < 2 {
+                    anyhow::bail!("Usage: write <text> [text2] [text3] ... [--no-enter]");
+                }
+
+                let has_no_enter = parts.iter().any(|p| p == "--no-enter" || p == "-n");
+
+                let texts: Vec<String> = parts[1..]
+                    .iter()
+                    .filter(|p| *p != "--no-enter" && *p != "-n")
+                    .cloned()
+                    .collect();
+
+                if texts.is_empty() {
+                    anyhow::bail!("No text to write");
+                }
+
+                if texts.len() == 1 {
+                    Ok(Command::Write {
+                        text: texts[0].clone(),
+                        add_newline: !has_no_enter,
+                    })
+                } else {
+                    Ok(Command::WriteMultiple { commands: texts })
+                }
+            }
+            "send" => {
+                if parts.len() < 2 {
+                    anyhow::bail!(
+                        "Usage: send <key>\n\
+                        Examples: ctrl+c, ctrl+d, enter, tab, backspace, esc, f1, up, down"
+                    );
+                }
+
+                let key_str = parts[1].to_lowercase();
+
+                let (bare_key, modifiers) = Self::parse_key(&key_str)?;
+
+                Ok(Command::SendKey {
+                    key: bare_key,
+                    modifiers,
                 })
             }
             // Other Commands
@@ -181,6 +243,19 @@ impl CommandExecutor {
             }
             Command::Switch { tab_name } => {
                 Self::switch_to_tab(context, tab_name.clone())?;
+                Ok(false)
+            }
+            // Read Write Commands
+            Command::Write { text, add_newline } => {
+                Self::write_to_tab(context, text, add_newline)?;
+                Ok(false)
+            }
+            Command::WriteMultiple { commands } => {
+                Self::write_multiple_to_tab(context, commands)?;
+                Ok(false)
+            }
+            Command::SendKey { key, modifiers } => {
+                Self::send_key_to_tab(context, key, modifiers)?;
                 Ok(false)
             }
             // Other Commands

@@ -4,6 +4,7 @@ use anyhow::Context;
 use tracing::debug;
 
 mod middleware;
+mod readwrite;
 mod session;
 mod tab;
 

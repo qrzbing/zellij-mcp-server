@@ -4,6 +4,10 @@ Available commands:
   - list (ls) [s | t]         : List all active sessions/tabs
   - rename (r) [s | t] <name> : Rename Session/Tab name
   - switch (s) <tab-name>     : Switch to tab `tab-name`
+  - new [<tab-name>]:         : Create a new tab
+  - close                     : Close current tab
+  - write (s) <text1> <text2> : Write text to panel
+  - send <Command>            : Send command to panel
   - status                    : Show current status
   - help                      : Show this help message
   - exit (quit, q)            : Exit the CLI
