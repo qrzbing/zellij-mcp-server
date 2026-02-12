@@ -1,5 +1,6 @@
-use std::collections::BTreeSet;
+use std::{collections::BTreeSet, fs, path::PathBuf};
 
+use anyhow::Context;
 use tracing::debug;
 use zellij_utils::{
     cli::CliAction,
@@ -91,5 +92,49 @@ impl ZellijSessionManager {
         self.send_bytes(bytes)?;
 
         Ok(())
+    }
+
+    pub fn dump_screen(&self, path: Option<String>, full: bool) -> anyhow::Result<String> {
+        let err_context = || "Failed to dump screen";
+
+        if let Some(file_path) = path {
+            let path_buf = PathBuf::from(file_path);
+
+            self.send_action(
+                CliAction::DumpScreen {
+                    path: path_buf.clone(),
+                    full,
+                },
+                None,
+            )
+            .with_context(err_context)?;
+
+            debug!("Dumped screen to file: {:?}", path_buf);
+
+            Ok(String::new())
+        } else {
+            let temp_file =
+                std::env::temp_dir().join(format!("zellij-dump-{}.txt", std::process::id()));
+
+            self.send_action(
+                CliAction::DumpScreen {
+                    path: temp_file.clone(),
+                    full,
+                },
+                None,
+            )
+            .with_context(err_context)?;
+
+            std::thread::sleep(std::time::Duration::from_millis(100));
+
+            let content = fs::read_to_string(&temp_file)
+                .with_context(|| format!("Failed to read temp file: {:?}", temp_file))?;
+
+            let _ = fs::remove_file(&temp_file);
+
+            debug!("Dumped screen to stdout (via temp file)");
+
+            Ok(content)
+        }
     }
 }

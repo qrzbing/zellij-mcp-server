@@ -51,6 +51,10 @@ pub enum Command {
         key: BareKey,
         modifiers: BTreeSet<KeyModifier>,
     },
+    DumpScreen {
+        path: Option<String>,
+        full: bool,
+    },
     // Other Commands
     Rename {
         target: RenameTarget,
@@ -161,6 +165,39 @@ impl CommandParser {
                     modifiers,
                 })
             }
+            "dump" => {
+                if parts.len() < 2 {
+                    anyhow::bail!(
+                        "Usage: dump <screen|s> [file] [--full]\n\
+                        Examples:\n\
+                          dump screen output.txt          Dump current screen\n\
+                          dump s output.txt --full        Dump with full scrollback\n\
+                          dump screen                     Dump to stdout\n\
+                        \n\
+                        Note: To view layout, use 'layout' command"
+                    );
+                }
+
+                let subcmd = parts[1].to_lowercase();
+
+                match subcmd.as_str() {
+                    "screen" | "s" => {
+                        let full = parts.iter().any(|p| p == "--full" || p == "-f");
+
+                        let path = parts[2..]
+                            .iter()
+                            .find(|p| !p.starts_with("--") && !p.starts_with("-"))
+                            .map(|s| s.to_string());
+
+                        Ok(Command::DumpScreen { path, full })
+                    }
+                    _ => anyhow::bail!(
+                        "Unknown dump subcommand: '{}'. Use 'screen' or 's'.\n\
+                        For layout info, use 'layout' command.",
+                        parts[1]
+                    ),
+                }
+            }
             // Other Commands
             "rename" | "r" => {
                 if parts.len() < 2 {
@@ -256,6 +293,10 @@ impl CommandExecutor {
             }
             Command::SendKey { key, modifiers } => {
                 Self::send_key_to_tab(context, key, modifiers)?;
+                Ok(false)
+            }
+            Command::DumpScreen { path, full } => {
+                Self::dump_screen(context, path, full)?;
                 Ok(false)
             }
             // Other Commands
