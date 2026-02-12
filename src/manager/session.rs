@@ -12,10 +12,10 @@ impl ZellijSessionManager {
         &self.session_name
     }
 
-    /// Socket Path
-    pub fn socket_path(&self) -> &PathBuf {
-        &self.socket_path
-    }
+    // /// Socket Path
+    // pub fn socket_path(&self) -> &PathBuf {
+    //     &self.socket_path
+    // }
 
     pub fn list_sessions(socket_path: &PathBuf) -> Result<Vec<String>> {
         let mut sessions = Vec::new();

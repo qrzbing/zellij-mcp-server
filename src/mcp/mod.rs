@@ -5,16 +5,32 @@ use rmcp::{
     tool_handler,
 };
 
+pub mod manager;
+pub mod tools;
+
+use manager::SessionManager;
+
+/// Zellij MCP Server
 #[derive(Clone)]
 pub struct ZellijMcpServer {
+    pub manager: SessionManager,
     tool_router: ToolRouter<Self>,
 }
 
 impl ZellijMcpServer {
     pub fn new() -> Self {
-        let tool_router = ToolRouter::new();
+        let manager = SessionManager::default();
 
-        Self { tool_router }
+        // Combine all tool routers
+        let tool_router = ToolRouter::new()
+            + tools::session::tool_router()
+            + tools::tab::tool_router()
+            + tools::readwrite::tool_router();
+
+        Self {
+            manager,
+            tool_router,
+        }
     }
 }
 
@@ -25,7 +41,7 @@ impl ServerHandler for ZellijMcpServer {
             protocol_version: ProtocolVersion::V_2024_11_05,
             capabilities: ServerCapabilities::builder().enable_tools().build(),
             server_info: Implementation {
-                name: "live-cov-mcp".to_string(),
+                name: "zellij-mcp".to_string(),
                 version: env!("CARGO_PKG_VERSION").to_string(),
                 icons: None,
                 title: None,
