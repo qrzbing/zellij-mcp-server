@@ -11,10 +11,10 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 mod cli;
 mod interactive;
 mod manager;
-mod server;
+mod mcp;
 
 use interactive::InteractiveCli;
-use server::ZellijMcpServer;
+use mcp::ZellijMcpServer;
 
 pub async fn run_mcp_server(bind_address: String) -> anyhow::Result<()> {
     // Initialize logging

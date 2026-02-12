@@ -31,7 +31,7 @@ impl ServerHandler for ZellijMcpServer {
                 title: None,
                 website_url: None,
             },
-            instructions: Some(include_str!("docs/instructions.md").to_string()),
+            instructions: Some(include_str!("./instructions.md").to_string()),
         }
     }
 }
