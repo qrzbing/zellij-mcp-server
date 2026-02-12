@@ -4,9 +4,13 @@ use anyhow::Context;
 use tracing::debug;
 
 mod middleware;
-mod readwrite;
+pub mod readwrite;
 mod session;
 mod tab;
+mod utils;
+
+// Re-export utility functions for use in other modules
+pub use utils::{format_key_name, parse_key_string, process_escape_sequences};
 
 #[derive(Debug, Clone)]
 pub struct ZellijSessionManager {

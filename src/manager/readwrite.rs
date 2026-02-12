@@ -7,6 +7,7 @@ use zellij_utils::{
     data::{BareKey, KeyModifier},
 };
 
+use super::utils::{format_key_name, parse_key_string, process_escape_sequences};
 use super::ZellijSessionManager;
 
 fn key_to_bytes(key: &BareKey, modifiers: &BTreeSet<KeyModifier>) -> anyhow::Result<Vec<u8>> {
@@ -62,6 +63,79 @@ fn key_to_bytes(key: &BareKey, modifiers: &BTreeSet<KeyModifier>) -> anyhow::Res
 }
 
 impl ZellijSessionManager {
+    // ============ High-level APIs ============
+
+    /// Write text to the current pane (automatically processes escape sequences)
+    ///
+    /// # Arguments
+    /// * `text` - Text to write (supports escape sequences like \n, \t, \e)
+    /// * `add_newline` - Whether to add a newline at the end
+    ///
+    /// # Examples
+    /// ```
+    /// mgr.write_text("echo hello", true)?;  // Execute command
+    /// mgr.write_text("hello", false)?;       // Write text only
+    /// ```
+    pub fn write_text(&self, text: &str, add_newline: bool) -> anyhow::Result<()> {
+        let processed_text = process_escape_sequences(text);
+        let content = if add_newline {
+            format!("{}\n", processed_text)
+        } else {
+            processed_text
+        };
+
+        self.write_to_pane(content)?;
+
+        debug!("Wrote text to pane: {:?} (newline: {})", text, add_newline);
+
+        Ok(())
+    }
+
+    /// Write multiple commands to the pane (each automatically appends newline)
+    ///
+    /// # Arguments
+    /// * `commands` - List of commands to execute
+    ///
+    /// # Examples
+    /// ```
+    /// mgr.write_multiple(&["cd /tmp".to_string(), "ls -la".to_string()])?;
+    /// ```
+    pub fn write_multiple(&self, commands: &[String]) -> anyhow::Result<()> {
+        for cmd in commands {
+            let processed = process_escape_sequences(cmd);
+            self.write_to_pane(format!("{}\n", processed))?;
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+
+        debug!("Wrote {} commands to pane", commands.len());
+
+        Ok(())
+    }
+
+    /// Send a key by parsing a key string
+    ///
+    /// # Arguments
+    /// * `key_str` - Key string (e.g., "ctrl+c", "enter", "f1")
+    ///
+    /// # Examples
+    /// ```
+    /// mgr.send_key_string("ctrl+c")?;
+    /// mgr.send_key_string("enter")?;
+    /// ```
+    pub fn send_key_string(&self, key_str: &str) -> anyhow::Result<String> {
+        let (bare_key, modifiers) = parse_key_string(key_str)?;
+        let key_name = format_key_name(&bare_key, &modifiers);
+
+        self.send_key(bare_key, modifiers)?;
+
+        debug!("Sent key to pane: {}", key_name);
+
+        Ok(key_name)
+    }
+
+    // ============ Low-level APIs ============
+
+    /// Write text directly to the pane (no escape sequence processing)
     pub fn write_to_pane(&self, text: String) -> anyhow::Result<()> {
         self.send_action(
             CliAction::WriteChars {
