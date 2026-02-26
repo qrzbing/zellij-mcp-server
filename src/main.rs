@@ -13,10 +13,11 @@ mod interactive;
 mod manager;
 mod mcp;
 
+use cli::ZellijConfig;
 use interactive::InteractiveCli;
 use mcp::ZellijMcpServer;
 
-pub async fn run_mcp_server(bind_address: String) -> anyhow::Result<()> {
+pub async fn run_mcp_server(bind_address: String, config: ZellijConfig) -> anyhow::Result<()> {
     // Initialize logging
     tracing_subscriber::registry()
         .with(
@@ -34,7 +35,7 @@ pub async fn run_mcp_server(bind_address: String) -> anyhow::Result<()> {
 
     // Create MCP service
     let service = StreamableHttpService::new(
-        || Ok(ZellijMcpServer::new()),
+        move || Ok(ZellijMcpServer::new(config.clone())),
         LocalSessionManager::default().into(),
         StreamableHttpServerConfig {
             cancellation_token: ct.child_token(),
@@ -79,23 +80,35 @@ pub async fn run_mcp_server(bind_address: String) -> anyhow::Result<()> {
 
 fn main() {
     let cli = cli::Cli::parse();
+
+    let socket_path = cli.command.socket_path();
+    if !socket_path.exists() {
+        eprintln!("Socket does not exist at {}", socket_path.display());
+        std::process::exit(1);
+    }
+    let zellij_path = cli.command.zellij_path();
+    // if !zellij_path.exists() {
+    //     eprintln!("Zellij does not exist at {}", zellij_path.display());
+    //     std::process::exit(1);
+    // }
+
     match cli.command {
-        cli::McpOptions::Run { bind_address } => {
+        cli::McpOptions::Run {
+            bind_address,
+            config,
+        } => {
             println!("Running on {}", bind_address);
             if let Err(e) = tokio::runtime::Runtime::new()
                 .unwrap()
-                .block_on(run_mcp_server(bind_address))
+                .block_on(run_mcp_server(bind_address, config))
             {
                 eprintln!("MCP server error: {}", e);
                 std::process::exit(1);
             }
         }
-        cli::McpOptions::Cli {
-            zellij_path,
-            socket_path,
-        } => {
-            let mut interactive_cli = InteractiveCli::new(socket_path.into(), zellij_path)
-                .expect("Failed to initialize CLI");
+        cli::McpOptions::Cli { config: _config } => {
+            let mut interactive_cli =
+                InteractiveCli::new(&socket_path, &zellij_path).expect("Failed to initialize CLI");
             if let Err(e) = interactive_cli.run() {
                 eprintln!("CLI error: {}", e);
                 std::process::exit(1);

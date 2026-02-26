@@ -3,19 +3,19 @@ use std::path::PathBuf;
 use crate::manager::ZellijSessionManager;
 
 #[derive(Debug)]
-pub struct CliContext {
+pub struct CliContext<'a> {
     /// Zellij Socket Address
-    pub socket_dir: PathBuf,
+    pub socket_dir: &'a PathBuf,
 
     /// Zellij Session Manager
     pub manager: Option<ZellijSessionManager>,
 
     /// Zellij Executable Path
-    pub zellij_path: String,
+    pub zellij_path: &'a PathBuf,
 }
 
-impl CliContext {
-    pub fn new(socket_dir: PathBuf, zellij_path: String) -> Self {
+impl<'a> CliContext<'a> {
+    pub fn new(socket_dir: &'a PathBuf, zellij_path: &'a PathBuf) -> Self {
         Self {
             socket_dir,
             manager: None,

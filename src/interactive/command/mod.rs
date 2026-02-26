@@ -371,7 +371,7 @@ impl CommandExecutor {
 
     fn show_status(context: &CliContext) {
         println!("{}", "Status:".bold());
-        println!("zellij path: {}", context.zellij_path);
+        println!("zellij path: {}", context.zellij_path.display());
         println!("socket dir: {}", context.socket_dir.display());
 
         let session_name = match context.current_session_name() {

@@ -9,13 +9,13 @@ mod context;
 use command::{CommandExecutor, CommandParser};
 use context::CliContext;
 
-pub struct InteractiveCli {
+pub struct InteractiveCli<'a> {
     editor: DefaultEditor,
-    context: CliContext,
+    context: CliContext<'a>,
 }
 
-impl InteractiveCli {
-    pub fn new(socket_dir: PathBuf, zellij_path: String) -> anyhow::Result<Self> {
+impl<'a> InteractiveCli<'a> {
+    pub fn new(socket_dir: &'a PathBuf, zellij_path: &'a PathBuf) -> anyhow::Result<Self> {
         let mut editor = DefaultEditor::new()?;
 
         let history_file = dirs::home_dir()

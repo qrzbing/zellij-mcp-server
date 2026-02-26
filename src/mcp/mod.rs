@@ -8,6 +8,7 @@ use rmcp::{
 pub mod manager;
 pub mod tools;
 
+use crate::cli::ZellijConfig;
 use manager::SessionManager;
 
 /// Zellij MCP Server
@@ -18,8 +19,8 @@ pub struct ZellijMcpServer {
 }
 
 impl ZellijMcpServer {
-    pub fn new() -> Self {
-        let manager = SessionManager::default();
+    pub fn new(config: ZellijConfig) -> Self {
+        let manager = SessionManager::new(config.resolve_socket_path().clone());
 
         // Combine all tool routers
         let tool_router = ToolRouter::new()
@@ -49,11 +50,5 @@ impl ServerHandler for ZellijMcpServer {
             },
             instructions: Some(include_str!("./instructions.md").to_string()),
         }
-    }
-}
-
-impl Default for ZellijMcpServer {
-    fn default() -> Self {
-        Self::new()
     }
 }
