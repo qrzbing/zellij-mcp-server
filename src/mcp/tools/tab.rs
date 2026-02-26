@@ -57,7 +57,7 @@ pub struct ShowLayoutRequest {
 #[tool_router(router = tab_tools)]
 impl ZellijMcpServer {
     /// Create a new tab
-    #[tool(description = "Create a new tab")]
+    #[tool]
     async fn new_tab(
         &self,
         Parameters(req): Parameters<NewTabRequest>,
@@ -88,7 +88,7 @@ impl ZellijMcpServer {
     }
 
     /// Close current tab
-    #[tool(description = "Close the current tab")]
+    #[tool]
     async fn close_tab(
         &self,
         Parameters(req): Parameters<CloseTabRequest>,
@@ -116,8 +116,8 @@ impl ZellijMcpServer {
         }
     }
 
-    /// List tabs
-    #[tool(description = "List all tabs")]
+    /// List all tabs
+    #[tool]
     async fn list_tabs(
         &self,
         Parameters(req): Parameters<ListTabsRequest>,

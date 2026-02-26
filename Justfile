@@ -4,13 +4,13 @@ _default:
 _fmt:
     cargo fmt
 
-update-docs:
+update-docs: _fmt
     cargo run --bin gen_docs
 
-build: update-docs _fmt
+build: update-docs
     cargo build --release
 
-build-static: update-docs _fmt
+build-static: update-docs
     cargo build --release --locked --target=x86_64-unknown-linux-musl
 
 tool *args: build

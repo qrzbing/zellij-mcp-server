@@ -1,0 +1,138 @@
+# MCP Tools
+
+## attach_session
+
+Attach to a Zellij session by name
+
+| Parameter | Type | Required | Description |
+|-----------|------|:--------:|-------------|
+| `session_name` | `string` | yes | Session name to attach to |
+
+## close_tab
+
+Close current tab
+
+| Parameter | Type | Required | Description |
+|-----------|------|:--------:|-------------|
+| `session_name` | `string` | no | Session name (uses current if not provided) |
+
+## detach_session
+
+Detach from a Zellij session
+
+| Parameter | Type | Required | Description |
+|-----------|------|:--------:|-------------|
+| `session_name` | `string` | no | Session name to detach from (uses current if not provided) |
+
+## dump_screen
+
+Dump screen content to file or stdout
+
+| Parameter | Type | Required | Description |
+|-----------|------|:--------:|-------------|
+| `full` | `boolean` | no | Include full scrollback history (default: false) |
+| `path` | `string` | no | Optional file path to save the dump (stdout if not provided) |
+| `session_name` | `string` | no | Session name (uses current if not provided) |
+
+## get_current_session
+
+Get the current active session name
+
+| Parameter | Type | Required | Description |
+|-----------|------|:--------:|-------------|
+
+## list_sessions
+
+List all available Zellij sessions
+
+| Parameter | Type | Required | Description |
+|-----------|------|:--------:|-------------|
+
+## list_tabs
+
+List all tabs
+
+| Parameter | Type | Required | Description |
+|-----------|------|:--------:|-------------|
+| `session_name` | `string` | no | Session name (uses current if not provided) |
+
+## new_tab
+
+Create a new tab
+
+| Parameter | Type | Required | Description |
+|-----------|------|:--------:|-------------|
+| `name` | `string` | no | Optional name for the new tab |
+| `session_name` | `string` | no | Session name (uses current if not provided) |
+
+## rename_session
+
+Rename a Zellij session
+
+| Parameter | Type | Required | Description |
+|-----------|------|:--------:|-------------|
+| `new_name` | `string` | yes | New name for the session |
+| `session_name` | `string` | no | Session name (uses current if not provided) |
+
+## rename_tab
+
+Rename the current tab
+
+| Parameter | Type | Required | Description |
+|-----------|------|:--------:|-------------|
+| `new_name` | `string` | no | New name for the tab (None to undo rename) |
+| `session_name` | `string` | no | Session name (uses current if not provided) |
+
+## select_session
+
+Set the current active session
+
+| Parameter | Type | Required | Description |
+|-----------|------|:--------:|-------------|
+| `session_name` | `string` | yes | Session name to set as current |
+
+## send_key
+
+Send a special key like 'enter', 'ctrl+c', 'f1'
+
+| Parameter | Type | Required | Description |
+|-----------|------|:--------:|-------------|
+| `key` | `string` | yes | Key to send (e.g., "enter", "tab", "ctrl+c", "f1") |
+| `session_name` | `string` | no | Session name (uses current if not provided) |
+
+## show_layout
+
+Show session layout
+
+| Parameter | Type | Required | Description |
+|-----------|------|:--------:|-------------|
+| `session_name` | `string` | no | Session name (uses current if not provided) |
+
+## switch_tab
+
+Switch to a specific tab
+
+| Parameter | Type | Required | Description |
+|-----------|------|:--------:|-------------|
+| `session_name` | `string` | no | Session name (uses current if not provided) |
+| `tab_name` | `string` | yes | Tab name to switch to |
+
+## write
+
+Write text to the current tab with optional newline
+
+| Parameter | Type | Required | Description |
+|-----------|------|:--------:|-------------|
+| `add_newline` | `boolean` | no | Whether to add newline at the end (default: true) |
+| `session_name` | `string` | no | Session name (uses current if not provided) |
+| `text` | `string` | yes | Text to write (supports escape sequences like \n, \t, \e) |
+
+## write_multiple
+
+Write multiple commands, each followed by newline
+
+| Parameter | Type | Required | Description |
+|-----------|------|:--------:|-------------|
+| `commands` | `string[]` | yes | Multiple commands to write (each followed by newline) |
+| `session_name` | `string` | no | Session name (uses current if not provided) |
+

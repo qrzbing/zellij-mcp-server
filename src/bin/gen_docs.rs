@@ -2,11 +2,10 @@ use std::{fs::File, io::Write};
 
 use chrono::Local;
 use clap::CommandFactory;
-use zellij_mcp_server::{cli::Cli, interactive::ReplCommand};
+use zellij_mcp_server::{interactive::ReplCommand, mcp::tools};
 
-fn main() -> std::io::Result<()> {
-    let mut main_cmd = Cli::command();
-    let mut repl_cmd = ReplCommand::command();
+fn gen_cli_docs() -> std::io::Result<()> {
+    let mut repl_cmd = ReplCommand::command().override_usage("<COMMAND>");
 
     let mut doc = String::new();
 
@@ -15,24 +14,6 @@ fn main() -> std::io::Result<()> {
     doc.push_str(&format!(" - Generate date: {}\n\n", current_date));
 
     doc.push_str("# Zellij MCP Server CLI Commands\n\n");
-
-    doc.push_str("```text\n$ zellij-mcp-server --help\n\n");
-    doc.push_str(&main_cmd.render_help().to_string());
-    doc.push_str("```\n\n");
-
-    for subcmd in main_cmd.get_subcommands_mut() {
-        let name = subcmd.get_name().to_string();
-        if name == "help" {
-            continue;
-        }
-
-        doc.push_str(&format!("## {}\n\n", name));
-        doc.push_str(&format!("```text\n$ zellij-mcp-server {} --help\n\n", name));
-        doc.push_str(&subcmd.render_help().to_string());
-        doc.push_str("```\n\n");
-    }
-
-    doc.push_str("## REPL Commands\n\n");
 
     doc.push_str("```text\n>>> help\n");
     doc.push_str(&repl_cmd.render_help().to_string());
@@ -54,4 +35,105 @@ fn main() -> std::io::Result<()> {
     file.write_all(doc.as_bytes())?;
 
     Ok(())
+}
+
+fn extract_type(schema: &serde_json::Value) -> String {
+    // schemars 1.x 用 anyOf 表示 Option<T>: [{type: T}, {type: null}]
+    if let Some(any_of) = schema.get("anyOf").and_then(|v| v.as_array()) {
+        let non_null: Vec<String> = any_of
+            .iter()
+            .filter(|s| s.get("type").and_then(|t| t.as_str()) != Some("null"))
+            .map(|s| extract_type(s))
+            .collect();
+        return if non_null.len() == 1 {
+            format!("{}?", non_null[0])
+        } else {
+            non_null.join(" | ")
+        };
+    }
+    // Vec<T> → array
+    if schema.get("type").and_then(|t| t.as_str()) == Some("array") {
+        let item_ty = schema
+            .get("items")
+            .map(|items| extract_type(items))
+            .unwrap_or_else(|| "any".to_string());
+        return format!("{}[]", item_ty);
+    }
+    // ["string", "null"] 形式的 nullable type
+    if let Some(type_arr) = schema.get("type").and_then(|t| t.as_array()) {
+        let non_null: Vec<&str> = type_arr
+            .iter()
+            .filter_map(|v| v.as_str())
+            .filter(|s| *s != "null")
+            .collect();
+        return if non_null.len() == 1 {
+            format!("{}?", non_null[0])
+        } else {
+            non_null.join(" | ")
+        };
+    }
+    // 普通类型
+    schema
+        .get("type")
+        .and_then(|t| t.as_str())
+        .unwrap_or("any")
+        .to_string()
+}
+
+fn gen_mcp_docs() -> std::io::Result<()> {
+    let mut doc = String::new();
+    let tool_router =
+        tools::session::tool_router() + tools::tab::tool_router() + tools::readwrite::tool_router();
+    let mut mcp_tools = tool_router.list_all();
+    mcp_tools.sort_by(|a, b| a.name.cmp(&b.name));
+    doc.push_str("# MCP Tools\n\n");
+
+    for tool in mcp_tools {
+        doc.push_str(&format!("## {}\n\n", tool.name));
+        if let Some(desc) = &tool.description {
+            doc.push_str(&format!("{}\n\n", desc));
+        }
+        // 从 JSON Schema 中提取参数信息
+        if let Some(props) = tool
+            .input_schema
+            .get("properties")
+            .and_then(|p| p.as_object())
+        {
+            let required: Vec<&str> = tool
+                .input_schema
+                .get("required")
+                .and_then(|r| r.as_array())
+                .map(|arr| arr.iter().filter_map(|v| v.as_str()).collect())
+                .unwrap_or_default();
+
+            doc.push_str("| Parameter | Type | Required | Description |\n");
+            doc.push_str("|-----------|------|:--------:|-------------|\n");
+            for (param, schema) in props {
+                let ty = extract_type(schema); // 处理 ["string","null"] 等 nullable 类型
+                let desc = schema
+                    .get("description")
+                    .and_then(|d| d.as_str())
+                    .unwrap_or("");
+                let req = if required.contains(&param.as_str()) {
+                    "yes"
+                } else {
+                    "no"
+                };
+                doc.push_str(&format!(
+                    "| `{}` | `{}` | {} | {} |\n",
+                    param, ty, req, desc
+                ));
+            }
+            doc.push('\n');
+        }
+    }
+
+    let mut file = File::create("docs/mcp-command.md")?;
+    file.write_all(doc.as_bytes())?;
+    Ok(())
+}
+
+fn main() -> std::io::Result<()> {
+    gen_cli_docs()?;
+    gen_mcp_docs()
 }
