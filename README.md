@@ -66,5 +66,4 @@ Options:
 ## TODOs
 
 - [ ] 添加 GitHub Action
-- [ ] 实现更多 MCP 工具 #1
-
+- [ ] 实现更多 MCP 工具 [#1](https://github.com/qrzbing/zellij-mcp-server/issues/1)
