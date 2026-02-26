@@ -5,3 +5,5 @@
 ---
 
 由于本项目实现依赖 [zellij-utils](https://crates.io/crates/zellij-utils) 版本，因此版本号与 zellij-utils 保持一致。
+
+- [CLI 文档](./docs/cli-command.md)

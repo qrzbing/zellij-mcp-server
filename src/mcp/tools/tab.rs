@@ -201,7 +201,8 @@ impl ZellijMcpServer {
                     mgr.rename_tab(name.clone())
                         .map(|_| format!("Renamed to '{}'", name))
                 } else {
-                    mgr.undo_rename_tab().map(|_| "Restored default name".to_string())
+                    mgr.undo_rename_tab()
+                        .map(|_| "Restored default name".to_string())
                 };
 
                 match result {
@@ -232,24 +233,22 @@ impl ZellijMcpServer {
         Parameters(req): Parameters<ShowLayoutRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         match self.manager.resolve_session(req.session_name) {
-            Ok(mgr) => {
-                match mgr.send_action(zellij_utils::cli::CliAction::DumpLayout, None) {
-                    Ok(layout) => {
-                        tracing::info!("Retrieved layout");
-                        Ok(CallToolResult::success(vec![Content::text(format!(
-                            "Layout:\n{}",
-                            layout
-                        ))]))
-                    }
-                    Err(e) => {
-                        tracing::error!("Failed to get layout: {}", e);
-                        Ok(CallToolResult::error(vec![Content::text(format!(
-                            "Failed: {}",
-                            e
-                        ))]))
-                    }
+            Ok(mgr) => match mgr.send_action(zellij_utils::cli::CliAction::DumpLayout, None) {
+                Ok(layout) => {
+                    tracing::info!("Retrieved layout");
+                    Ok(CallToolResult::success(vec![Content::text(format!(
+                        "Layout:\n{}",
+                        layout
+                    ))]))
                 }
-            }
+                Err(e) => {
+                    tracing::error!("Failed to get layout: {}", e);
+                    Ok(CallToolResult::error(vec![Content::text(format!(
+                        "Failed: {}",
+                        e
+                    ))]))
+                }
+            },
             Err(e) => Ok(CallToolResult::error(vec![Content::text(format!(
                 "Failed to resolve: {}",
                 e

@@ -7,8 +7,8 @@ use zellij_utils::{
     data::{BareKey, KeyModifier},
 };
 
-use super::utils::{format_key_name, parse_key_string, process_escape_sequences};
 use super::ZellijSessionManager;
+use super::utils::{format_key_name, parse_key_string, process_escape_sequences};
 
 fn key_to_bytes(key: &BareKey, modifiers: &BTreeSet<KeyModifier>) -> anyhow::Result<Vec<u8>> {
     if modifiers.contains(&KeyModifier::Ctrl) {

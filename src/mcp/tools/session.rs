@@ -148,7 +148,10 @@ impl ZellijMcpServer {
         &self,
         Parameters(req): Parameters<SelectSessionRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        match self.manager.set_current_session(Some(req.session_name.clone())) {
+        match self
+            .manager
+            .set_current_session(Some(req.session_name.clone()))
+        {
             Ok(_) => {
                 tracing::info!("Selected '{}'", req.session_name);
                 Ok(CallToolResult::success(vec![Content::text(format!(

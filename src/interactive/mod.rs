@@ -1,13 +1,16 @@
 use std::path::PathBuf;
 
+use clap::Parser;
 use colored::Colorize;
 use rustyline::{DefaultEditor, error::ReadlineError};
 
 mod command;
 mod context;
 
-use command::{CommandExecutor, CommandParser};
+use command::CommandExecutor;
 use context::CliContext;
+
+pub use crate::interactive::command::ReplCommand;
 
 pub struct InteractiveCli<'a> {
     editor: DefaultEditor,
@@ -37,24 +40,33 @@ impl<'a> InteractiveCli<'a> {
 
             match self.editor.readline(&prompt) {
                 Ok(line) => {
-                    // Add line to history
-                    let _ = self.editor.add_history_entry(line.as_str());
+                    let line = line.trim();
+                    if line.is_empty() {
+                        continue;
+                    }
 
-                    match CommandParser::parse(&line) {
+                    // Add line to history
+                    let _ = self.editor.add_history_entry(line);
+
+                    let args = match shlex::split(line) {
+                        Some(args) => args,
+                        None => {
+                            eprintln!("{} Invalid quoting", "Error:".red().bold());
+                            continue;
+                        }
+                    };
+
+                    match ReplCommand::try_parse_from(args) {
                         Ok(command) => match CommandExecutor::execute(command, &mut self.context) {
                             Ok(should_exit) => {
                                 if should_exit {
                                     break;
                                 }
                             }
-                            Err(e) => {
-                                eprintln!("{} {}", "Error:".red().bold(), e);
-                            }
+                            Err(e) => eprintln!("{} {}", "Error:".red().bold(), e),
                         },
-                        Err(e) => {
-                            if !line.trim().is_empty() {
-                                eprintln!("{} {}", "Error:".red().bold(), e);
-                            }
+                        Err(err) => {
+                            let _ = err.print();
                         }
                     }
                 }

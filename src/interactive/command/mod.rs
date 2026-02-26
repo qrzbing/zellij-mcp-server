@@ -1,257 +1,146 @@
-use std::collections::BTreeSet;
-
 use anyhow::{Context, Ok};
+use clap::{Parser, Subcommand};
 use colored::Colorize;
-use shlex;
-use zellij_utils::{
-    cli::CliAction,
-    data::{BareKey, KeyModifier},
-};
+use zellij_utils::cli::CliAction;
 
-use crate::interactive::context::CliContext;
+use crate::{interactive::context::CliContext, manager};
 
 mod readwrite;
 mod session;
 mod tab;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Subcommand, Debug, Clone)]
 pub enum RenameTarget {
-    Tab,
-    Session,
+    /// Rename current tab
+    #[command(alias = "t")]
+    Tab {
+        /// New name for the target
+        name: Option<String>,
+
+        /// Undo previous rename
+        #[arg(short = 'u', long)]
+        undo: bool,
+    },
+
+    /// Rename current session
+    #[command(alias = "s")]
+    Session {
+        /// New name for the session
+        #[arg(required = true)]
+        name: String,
+    },
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum Command {
-    // Session Commands
-    Attach {
-        session_name: String,
-    },
-    Detach,
-    List {
-        filter: String,
-    },
-    // Layout Commands
-    ShowLayout,
-    CloseTab,
-    NewTab {
-        name: Option<String>,
-    },
-    Switch {
-        tab_name: String,
-    },
-    // Read Write Commands
-    Write {
-        text: String,
-        add_newline: bool,
-    },
-    WriteMultiple {
-        commands: Vec<String>,
-    },
-    SendKey {
-        key: BareKey,
-        modifiers: BTreeSet<KeyModifier>,
-    },
-    DumpScreen {
+#[derive(Subcommand, Debug, Clone)]
+pub enum DumpCommand {
+    /// Dump current screen
+    #[command(alias = "s")]
+    Screen {
+        /// Optional output file path
         path: Option<String>,
+
+        /// Dump with full scrollback
+        #[arg(short = 'f', long)]
         full: bool,
     },
-    // Other Commands
-    Rename {
-        target: RenameTarget,
-        name: Option<String>,
-    },
-    Status,
-    Help,
-    Exit,
 }
 
-pub struct CommandParser;
+#[derive(Parser, Debug)]
+#[command(multicall = true)]
+pub enum ReplCommand {
+    /// Attach to an existing zellij session
+    #[command(alias = "a")]
+    Attach {
+        /// Session name to attach to
+        session_name: String,
+    },
 
-impl CommandParser {
-    pub fn parse(input: &str) -> anyhow::Result<Command> {
-        let input = input.trim();
+    /// Detach from the current session
+    #[command(alias = "d")]
+    Detach,
 
-        if input.is_empty() {
-            anyhow::bail!("Empty command");
-        }
+    /// List active sessions or tabs
+    #[command(alias = "ls")]
+    List {
+        /// Filter: "session" (or "s") | "tab" (or "t")
+        filter: String,
+    },
 
-        let parts: Vec<String> =
-            shlex::split(input).ok_or_else(|| anyhow::anyhow!("Failed to parse command"))?;
-        if parts.is_empty() {
-            anyhow::bail!("Empty command");
-        }
+    /// Show current layout
+    #[command(alias = "layout", name = "show-layout")]
+    ShowLayout,
 
-        let cmd = parts[0].as_str();
+    /// Close current tab
+    CloseTab,
 
-        match cmd {
-            // Session Commands
-            "attach" | "a" => {
-                if parts.len() < 2 {
-                    anyhow::bail!("Usage: attach <session-name>");
-                }
-                Ok(Command::Attach {
-                    session_name: parts[1].to_string(),
-                })
-            }
-            "detach" | "d" => Ok(Command::Detach),
-            "list" | "ls" => {
-                if parts.len() < 2 {
-                    anyhow::bail!("Usage: ls [session | tab]");
-                }
-                Ok(Command::List {
-                    filter: parts[1].to_string(),
-                })
-            }
-            // Tab Commands
-            "new" | "n" => {
-                if parts.len() < 2 {
-                    anyhow::bail!("Usage: new <tab-name>");
-                }
-                Ok(Command::NewTab {
-                    name: Some(parts[1].to_string()),
-                })
-            }
-            "close" => Ok(Command::CloseTab),
-            "layout" | "show-layout" => Ok(Command::ShowLayout),
-            "switch" | "s" => {
-                if parts.len() < 2 {
-                    anyhow::bail!("Usage: switch <tab-name>");
-                }
-                Ok(Command::Switch {
-                    tab_name: parts[1].to_string(),
-                })
-            }
-            // Read Write Commands
-            "write" | "w" => {
-                if parts.len() < 2 {
-                    anyhow::bail!("Usage: write <text> [text2] [text3] ... [--no-enter]");
-                }
+    /// Create a new tab
+    #[command(alias = "n", name = "new")]
+    NewTab {
+        /// Optional tab name
+        name: Option<String>,
+    },
 
-                let has_no_enter = parts.iter().any(|p| p == "--no-enter" || p == "-n");
+    /// Switch to a specific tab
+    #[command(alias = "s")]
+    Switch {
+        /// Name of the tab to switch to
+        tab_name: String,
+    },
 
-                let texts: Vec<String> = parts[1..]
-                    .iter()
-                    .filter(|p| *p != "--no-enter" && *p != "-n")
-                    .cloned()
-                    .collect();
+    /// Write text to the current tab
+    #[command(alias = "w")]
+    Write {
+        /// Do not add a newline at the end
+        #[arg(short = 'n', long = "no-enter")]
+        no_enter: bool,
 
-                if texts.is_empty() {
-                    anyhow::bail!("No text to write");
-                }
+        /// The text to write (multiple texts will be executed sequentially)
+        #[arg(required = true)]
+        texts: Vec<String>,
+    },
 
-                if texts.len() == 1 {
-                    Ok(Command::Write {
-                        text: texts[0].clone(),
-                        add_newline: !has_no_enter,
-                    })
-                } else {
-                    Ok(Command::WriteMultiple { commands: texts })
-                }
-            }
-            "send" => {
-                if parts.len() < 2 {
-                    anyhow::bail!(
-                        "Usage: send <key>\n\
-                        Examples: ctrl+c, ctrl+d, enter, tab, backspace, esc, f1, up, down"
-                    );
-                }
+    /// Send a specific key to the current tab
+    Send {
+        /// Key to send (e.g., ctrl+c, enter, esc, f1)
+        key: String,
+    },
 
-                let key_str = parts[1].to_lowercase();
+    /// Dump the current screen
+    Dump {
+        #[command(subcommand)]
+        dump_command: DumpCommand,
+    },
 
-                let (bare_key, modifiers) = Self::parse_key(&key_str)?;
+    /// Rename current tab or session
+    #[command(alias = "r")]
+    Rename {
+        #[command(subcommand)]
+        target: RenameTarget,
+    },
 
-                Ok(Command::SendKey {
-                    key: bare_key,
-                    modifiers,
-                })
-            }
-            "dump" => {
-                if parts.len() < 2 {
-                    anyhow::bail!(
-                        "Usage: dump <screen|s> [file] [--full]\n\
-                        Examples:\n\
-                          dump screen output.txt          Dump current screen\n\
-                          dump s output.txt --full        Dump with full scrollback\n\
-                          dump screen                     Dump to stdout\n\
-                        \n\
-                        Note: To view layout, use 'layout' command"
-                    );
-                }
+    /// Show MCP status
+    Status,
 
-                let subcmd = parts[1].to_lowercase();
-
-                match subcmd.as_str() {
-                    "screen" | "s" => {
-                        let full = parts.iter().any(|p| p == "--full" || p == "-f");
-
-                        let path = parts[2..]
-                            .iter()
-                            .find(|p| !p.starts_with("--") && !p.starts_with("-"))
-                            .map(|s| s.to_string());
-
-                        Ok(Command::DumpScreen { path, full })
-                    }
-                    _ => anyhow::bail!(
-                        "Unknown dump subcommand: '{}'. Use 'screen' or 's'.\n\
-                        For layout info, use 'layout' command.",
-                        parts[1]
-                    ),
-                }
-            }
-            // Other Commands
-            "rename" | "r" => {
-                if parts.len() < 2 {
-                    anyhow::bail!("Usage: rename <tab|session> [name] [--undo|-u]");
-                }
-
-                let target = match parts[1].as_str() {
-                    "tab" | "t" => RenameTarget::Tab,
-                    "session" | "s" => RenameTarget::Session,
-                    _ => anyhow::bail!(
-                        "Unknown rename target: '{}'. Use 'tab' or 'session'.",
-                        parts[1]
-                    ),
-                };
-
-                let is_undo = parts.iter().any(|p| p == "--undo" || p == "-u");
-
-                let name = if is_undo {
-                    None
-                } else if parts.len() < 3 {
-                    anyhow::bail!("Usage: rename {} <name>", parts[1]);
-                } else {
-                    Some(parts[2].clone())
-                };
-
-                Ok(Command::Rename { target, name })
-            }
-            "status" => Ok(Command::Status),
-            "help" | "h" | "?" => Ok(Command::Help),
-            "exit" | "quit" | "q" => Ok(Command::Exit),
-
-            _ => anyhow::bail!(
-                "Unknown command: '{}'. Type 'help' for available commands.",
-                cmd
-            ),
-        }
-    }
+    /// Exit the interactive shell
+    #[command(alias = "q", alias = "quit")]
+    Exit,
 }
 
 pub struct CommandExecutor;
 
 impl CommandExecutor {
-    pub fn execute(command: Command, context: &mut CliContext) -> anyhow::Result<bool> {
+    pub fn execute(command: ReplCommand, context: &mut CliContext) -> anyhow::Result<bool> {
         match command {
             // Session Commands
-            Command::Attach { session_name } => {
+            ReplCommand::Attach { session_name } => {
                 Self::attach_session(session_name, context)?;
                 Ok(false)
             }
-            Command::Detach => {
+            ReplCommand::Detach => {
                 Self::detach_session(context);
                 Ok(false)
             }
-            Command::List { filter } => {
+            ReplCommand::List { filter } => {
                 match filter.as_str() {
                     "session" | "s" => {
                         Self::list_sessions(context)?;
@@ -266,72 +155,72 @@ impl CommandExecutor {
                 Ok(false)
             }
             // Layout Commands
-            Command::CloseTab => {
+            ReplCommand::CloseTab => {
                 Self::close_tab(context)?;
                 Ok(false)
             }
-            Command::NewTab { name } => {
+            ReplCommand::NewTab { name } => {
                 Self::new_tab(context, name.clone())?;
                 Ok(false)
             }
-            Command::ShowLayout => {
+            ReplCommand::ShowLayout => {
                 Self::show_layout(context)?;
                 Ok(false)
             }
-            Command::Switch { tab_name } => {
+            ReplCommand::Switch { tab_name } => {
                 Self::switch_to_tab(context, tab_name.clone())?;
                 Ok(false)
             }
-            // Read Write Commands
-            Command::Write { text, add_newline } => {
-                Self::write_to_tab(context, text, add_newline)?;
+            ReplCommand::Write { no_enter, texts } => {
+                if texts.len() > 1 {
+                    Self::write_multiple_to_tab(context, texts)?;
+                } else {
+                    Self::write_to_tab(context, texts[0].clone(), !no_enter)?;
+                }
                 Ok(false)
             }
-            Command::WriteMultiple { commands } => {
-                Self::write_multiple_to_tab(context, commands)?;
+            ReplCommand::Send { key } => {
+                let (bare_key, modifiers) = manager::parse_key_string(&key)?;
+                Self::send_key_to_tab(context, bare_key, modifiers)?;
                 Ok(false)
             }
-            Command::SendKey { key, modifiers } => {
-                Self::send_key_to_tab(context, key, modifiers)?;
-                Ok(false)
-            }
-            Command::DumpScreen { path, full } => {
-                Self::dump_screen(context, path, full)?;
+            ReplCommand::Dump { dump_command } => {
+                match dump_command {
+                    DumpCommand::Screen { path, full } => {
+                        Self::dump_screen(context, path, full)?;
+                    }
+                }
                 Ok(false)
             }
             // Other Commands
-            Command::Rename { target, name } => {
-                Self::rename(context, target, name)?;
+            ReplCommand::Rename { target } => {
+                Self::rename(context, target)?;
                 Ok(false)
             }
-            Command::Status => {
+            ReplCommand::Status => {
                 Self::show_status(context);
                 Ok(false)
             }
 
-            Command::Help => {
-                Self::show_help();
-                Ok(false)
-            }
-
-            Command::Exit => {
+            ReplCommand::Exit => {
                 println!("{}", "Goodbye!".green());
                 Ok(true)
             }
         }
     }
 
-    fn rename(
-        context: &mut CliContext,
-        target: RenameTarget,
-        name: Option<String>,
-    ) -> anyhow::Result<()> {
+    fn rename(context: &mut CliContext, target: RenameTarget) -> anyhow::Result<()> {
         let mgr = context
             .manager_mut()
             .with_context(|| "Not attached to any session")?;
 
         match target {
-            RenameTarget::Tab => {
+            RenameTarget::Tab { name, undo } => {
+                if undo {
+                    mgr.undo_rename_tab()?;
+                    println!("✓ Restored tab to default name");
+                    return Ok(());
+                }
                 if let Some(name) = name {
                     mgr.rename_tab(name.clone())?;
                     println!("✓ Renamed current tab to: {}", name);
@@ -340,13 +229,9 @@ impl CommandExecutor {
                     println!("✓ Restored tab to default name");
                 }
             }
-            RenameTarget::Session => {
-                if let Some(name) = name {
-                    mgr.rename_session(name.clone())?;
-                    println!("✓ Renamed session to: {}", name);
-                } else {
-                    anyhow::bail!("Cannot undo session rename. Please provide a new name.");
-                }
+            RenameTarget::Session { name } => {
+                mgr.rename_session(name.clone())?;
+                println!("✓ Renamed session to: {}", name);
             }
         }
 
@@ -380,9 +265,5 @@ impl CommandExecutor {
         };
 
         println!("current session: {}", session_name);
-    }
-
-    fn show_help() {
-        println!("{}", include_str!("./cli-help.md"));
     }
 }

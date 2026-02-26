@@ -7,14 +7,7 @@ use zellij_utils::data::{BareKey, KeyModifier};
 use crate::interactive::context::CliContext;
 use crate::manager;
 
-use super::{CommandExecutor, CommandParser};
-
-impl CommandParser {
-    /// Parse key string using Manager's utility function
-    pub(super) fn parse_key(key_str: &str) -> anyhow::Result<(BareKey, BTreeSet<KeyModifier>)> {
-        manager::parse_key_string(key_str)
-    }
-}
+use super::CommandExecutor;
 
 impl CommandExecutor {
     pub(super) fn write_to_tab(

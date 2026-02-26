@@ -4,8 +4,8 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use anyhow::Result;
 use crate::manager::ZellijSessionManager;
+use anyhow::Result;
 
 /// Zellij Session Manager for MCP
 ///
