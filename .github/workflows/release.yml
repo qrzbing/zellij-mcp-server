@@ -1,0 +1,75 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - dev
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build and Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-musl
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install system dependencies
+        run: sudo apt-get install -y musl-tools
+
+      - name: Determine release info
+        id: info
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+            echo "is_dev=false" >> "$GITHUB_OUTPUT"
+            echo "release_name=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=dev" >> "$GITHUB_OUTPUT"
+            echo "is_dev=true" >> "$GITHUB_OUTPUT"
+            echo "release_name=Development Build" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build dynamic binary
+        run: cargo build --release
+
+      - name: Build static binary (musl)
+        run: cargo build --release --locked --target=x86_64-unknown-linux-musl
+
+      - name: Prepare artifacts
+        run: |
+          TAG="${{ steps.info.outputs.tag }}"
+          mkdir -p artifacts
+          cp target/release/zellij-mcp-server "artifacts/zellij-mcp-server-${TAG}-x86_64-linux"
+          cp target/x86_64-unknown-linux-musl/release/zellij-mcp-server "artifacts/zellij-mcp-server-${TAG}-x86_64-linux-musl"
+          cd artifacts
+          sha256sum * > "SHA256SUMS-${TAG}"
+
+      - name: Delete existing dev release
+        if: steps.info.outputs.is_dev == 'true'
+        run: gh release delete dev --yes --cleanup-tag 2>/dev/null || true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.info.outputs.tag }}
+          name: ${{ steps.info.outputs.release_name }}
+          prerelease: ${{ steps.info.outputs.is_dev == 'true' }}
+          body: ${{ steps.info.outputs.is_dev == 'true' && format('Built from commit {0}', github.sha) || '' }}
+          generate_release_notes: ${{ steps.info.outputs.is_dev == 'false' }}
+          files: artifacts/*
