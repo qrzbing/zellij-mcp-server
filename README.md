@@ -4,10 +4,6 @@
 
 ---
 
-由于本项目实现依赖 [zellij-utils](https://crates.io/crates/zellij-utils) 版本，因此版本号与 zellij-utils 保持一致。
-
-- [CLI 文档](./docs/cli-command.md)
-
 ## 实现想法
 
 目前已经有了一些 Zellij MCP Server，例如
@@ -65,5 +61,15 @@ Options:
 
 ## TODOs
 
-- [ ] 添加 GitHub Action
 - [ ] 实现更多 MCP 工具 [#1](https://github.com/qrzbing/zellij-mcp-server/issues/1)
+- [x] 添加 Nix 发布
+- [x] 添加 GitHub Action
+
+---
+
+本项目实现依赖 [zellij-utils](https://crates.io/crates/zellij-utils) 版本，计划为：
+
+- 0.x.x：与 zellij 0.43.x 版本兼容
+  - 0.1.x：与 zellij 0.43.1 版本兼容
+  - 0.2.x：与 zellij 0.43.2 版本兼容
+- 1.x.x：与 zellij 0.44.x 版本兼容
