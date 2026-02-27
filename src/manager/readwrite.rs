@@ -8,8 +8,17 @@ use zellij_utils::{
     data::{BareKey, KeyModifier},
 };
 
-use super::ZellijSessionManager;
-use super::utils::{format_key_name, parse_key_string, process_escape_sequences};
+use super::{
+    ZellijSessionManager,
+    utils::{format_key_name, parse_key_string, process_escape_sequences},
+};
+
+#[derive(Debug, Copy, Clone)]
+pub enum DumpRange {
+    Viewport,                           // viewport
+    Last(usize),                        // --lines N
+    Range { begin: usize, end: usize }, // --begin N --end N（1-indexed）
+}
 
 fn key_to_bytes(key: &BareKey, modifiers: &BTreeSet<KeyModifier>) -> anyhow::Result<Vec<u8>> {
     if modifiers.contains(&KeyModifier::Ctrl) {
@@ -169,7 +178,9 @@ impl ZellijSessionManager {
         Ok(())
     }
 
-    pub fn dump_screen(&self, full: bool) -> anyhow::Result<(String, Option<PathBuf>)> {
+    pub fn dump_screen(&self, range: &DumpRange) -> anyhow::Result<(String, Option<PathBuf>)> {
+        let full = !matches!(range, DumpRange::Viewport);
+
         let err_context = || "Failed to dump screen";
 
         let (dump_file_path, do_remove) = match self.dump_screen_dir {
@@ -200,11 +211,30 @@ impl ZellijSessionManager {
         let content = fs::read_to_string(&dump_file_path)
             .with_context(|| format!("Failed to read temp file: {:?}", dump_file_path))?;
 
+        let result = match range {
+            DumpRange::Viewport => content,
+            &DumpRange::Last(n) => content
+                .lines()
+                .rev()
+                .take(n)
+                .collect::<Vec<_>>()
+                .into_iter()
+                .rev()
+                .collect::<Vec<_>>()
+                .join("\n"),
+            &DumpRange::Range { begin, end } => content
+                .lines()
+                .skip(begin.saturating_sub(1)) // 1-indexed
+                .take(end.saturating_sub(begin) + 1)
+                .collect::<Vec<_>>()
+                .join("\n"),
+        };
+
         if do_remove {
             let _ = fs::remove_file(&dump_file_path);
-            Ok((content, None))
+            Ok((result, None))
         } else {
-            Ok((content, Some(dump_file_path)))
+            Ok((result, Some(dump_file_path)))
         }
     }
 }

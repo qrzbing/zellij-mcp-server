@@ -4,6 +4,30 @@ use chrono::Local;
 use clap::CommandFactory;
 use zellij_mcp_server::{interactive::ReplCommand, mcp::tools};
 
+fn render_subcmd_docs(doc: &mut String, cmd: &mut clap::Command, prefix: &str, depth: usize) {
+    let name = cmd.get_name().to_string();
+    if name == "help" {
+        return;
+    }
+
+    let full_path = if prefix.is_empty() {
+        name.clone()
+    } else {
+        format!("{} {}", prefix, name)
+    };
+
+    let heading = "#".repeat(depth);
+    doc.push_str(&format!("{} {}\n\n", heading, full_path));
+    doc.push_str(&format!("```text\n>>> {} --help\n", full_path));
+    doc.push_str(&cmd.render_help().to_string()); // &mut 借用结束
+    doc.push_str("```\n\n");
+
+    // 递归处理子命令，depth+1 加深标题层级
+    for subcmd in cmd.get_subcommands_mut() {
+        render_subcmd_docs(doc, subcmd, &full_path, depth + 1);
+    }
+}
+
 fn gen_cli_docs() -> std::io::Result<()> {
     let mut repl_cmd = ReplCommand::command().override_usage("<COMMAND>");
 
@@ -20,20 +44,11 @@ fn gen_cli_docs() -> std::io::Result<()> {
     doc.push_str("```\n\n");
 
     for subcmd in repl_cmd.get_subcommands_mut() {
-        let name = subcmd.get_name().to_string();
-        if name == "help" {
-            continue;
-        }
-
-        doc.push_str(&format!("### {}\n\n", name));
-        doc.push_str(&format!("```text\n>>> {} --help\n", name));
-        doc.push_str(&subcmd.render_help().to_string());
-        doc.push_str("```\n\n");
+        render_subcmd_docs(&mut doc, subcmd, "", 2);
     }
 
     let mut file = File::create("docs/cli-command.md")?;
     file.write_all(doc.as_bytes())?;
-
     Ok(())
 }
 

@@ -37,7 +37,9 @@ Note:
 
 | Parameter | Type | Required | Description |
 |-----------|------|:--------:|-------------|
-| `full` | `boolean` | no | Include full scrollback history (default: false) |
+| `begin` | `integer` | no | Start line, 1-indexed. Must be used with end. Mutually exclusive with lines. |
+| `end` | `integer` | no | End line, 1-indexed. Must be used with begin. Mutually exclusive with lines. |
+| `lines` | `integer` | no | Return the last N lines. Mutually exclusive with begin/end. |
 | `session_name` | `string` | no | Session name (uses current if not provided) |
 
 ## get_current_session

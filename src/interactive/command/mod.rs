@@ -5,7 +5,10 @@ use clap::{Parser, Subcommand};
 use colored::Colorize;
 use zellij_utils::cli::CliAction;
 
-use crate::{interactive::context::CliContext, manager};
+use crate::{
+    interactive::context::CliContext,
+    manager::{self, readwrite::DumpRange},
+};
 
 mod readwrite;
 mod session;
@@ -38,9 +41,17 @@ pub enum DumpCommand {
     /// Dump current screen
     #[command(alias = "s")]
     Screen {
-        /// Dump with full scrollback
-        #[arg(short = 'f', long)]
-        full: bool,
+        /// Return the last N lines
+        #[arg(short = 'n', long, conflicts_with_all = ["begin", "end"])]
+        lines: Option<usize>,
+
+        /// Start line (1-indexed, must be used with --end)
+        #[arg(long, conflicts_with = "lines", requires = "end")]
+        begin: Option<usize>,
+
+        /// End line (1-indexed, must be used with --begin)
+        #[arg(long, conflicts_with = "lines", requires = "begin")]
+        end: Option<usize>,
     },
 }
 
@@ -160,8 +171,13 @@ impl CommandExecutor {
             }
             ReplCommand::Dump { dump_command } => {
                 match dump_command {
-                    DumpCommand::Screen { full } => {
-                        Self::dump_screen(context, full)?;
+                    DumpCommand::Screen { lines, begin, end } => {
+                        let range = match (lines, begin, end) {
+                            (Some(n), _, _) => DumpRange::Last(n),
+                            (_, Some(b), Some(e)) => DumpRange::Range { begin: b, end: e },
+                            _ => DumpRange::Viewport,
+                        };
+                        Self::dump_screen(context, &range)?;
                     }
                 }
                 Ok(false)

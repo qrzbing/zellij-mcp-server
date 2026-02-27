@@ -25,7 +25,7 @@ Commands:
   help         Print this message or the help of the given subcommand(s)
 ```
 
-### attach
+## attach
 
 ```text
 >>> attach --help
@@ -40,7 +40,7 @@ Options:
   -h, --help  Print help
 ```
 
-### close-tab
+## close-tab
 
 ```text
 >>> close-tab --help
@@ -52,7 +52,7 @@ Options:
   -h, --help  Print help
 ```
 
-### detach
+## detach
 
 ```text
 >>> detach --help
@@ -64,7 +64,7 @@ Options:
   -h, --help  Print help
 ```
 
-### dump
+## dump
 
 ```text
 >>> dump --help
@@ -80,7 +80,22 @@ Options:
   -h, --help  Print help
 ```
 
-### exit
+### dump screen
+
+```text
+>>> dump screen --help
+Dump current screen
+
+Usage: screen [OPTIONS]
+
+Options:
+  -n, --lines <LINES>  Return the last N lines
+      --begin <BEGIN>  Start line (1-indexed, must be used with --end)
+      --end <END>      End line (1-indexed, must be used with --begin)
+  -h, --help           Print help
+```
+
+## exit
 
 ```text
 >>> exit --help
@@ -92,7 +107,7 @@ Options:
   -h, --help  Print help
 ```
 
-### list
+## list
 
 ```text
 >>> list --help
@@ -107,7 +122,7 @@ Options:
   -h, --help  Print help
 ```
 
-### new
+## new
 
 ```text
 >>> new --help
@@ -122,7 +137,7 @@ Options:
   -h, --help  Print help
 ```
 
-### switch
+## switch
 
 ```text
 >>> switch --help
@@ -137,7 +152,7 @@ Options:
   -h, --help  Print help
 ```
 
-### rename
+## rename
 
 ```text
 >>> rename --help
@@ -154,7 +169,38 @@ Options:
   -h, --help  Print help
 ```
 
-### send
+### rename tab
+
+```text
+>>> rename tab --help
+Rename current tab
+
+Usage: tab [OPTIONS] [NAME]
+
+Arguments:
+  [NAME]  New name for the target
+
+Options:
+  -u, --undo  Undo previous rename
+  -h, --help  Print help
+```
+
+### rename session
+
+```text
+>>> rename session --help
+Rename current session
+
+Usage: session <NAME>
+
+Arguments:
+  <NAME>  New name for the session
+
+Options:
+  -h, --help  Print help
+```
+
+## send
 
 ```text
 >>> send --help
@@ -169,7 +215,7 @@ Options:
   -h, --help  Print help
 ```
 
-### set
+## set
 
 ```text
 >>> set --help
@@ -185,7 +231,22 @@ Options:
   -h, --help  Print help
 ```
 
-### show-layout
+### set log-dir
+
+```text
+>>> set log-dir --help
+If set LogDir, all dump screen commands will log to LogDir
+
+Usage: log-dir <PATH>
+
+Arguments:
+  <PATH>  Path to the LogDir
+
+Options:
+  -h, --help  Print help
+```
+
+## show-layout
 
 ```text
 >>> show-layout --help
@@ -197,7 +258,7 @@ Options:
   -h, --help  Print help
 ```
 
-### status
+## status
 
 ```text
 >>> status --help
@@ -209,7 +270,7 @@ Options:
   -h, --help  Print help
 ```
 
-### write
+## write
 
 ```text
 >>> write --help

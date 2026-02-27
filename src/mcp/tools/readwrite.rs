@@ -8,7 +8,7 @@ use rmcp::{
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-use crate::mcp::ZellijMcpServer;
+use crate::{manager::readwrite::DumpRange, mcp::ZellijMcpServer};
 
 // ============ Request Types ============
 
@@ -45,9 +45,13 @@ pub struct SendKeyRequest {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct DumpScreenRequest {
-    /// Include full scrollback history (default: false)
-    #[serde(default)]
-    pub full: bool,
+    /// Return the last N lines. Mutually exclusive with begin/end.
+    pub lines: Option<usize>,
+
+    /// Start line, 1-indexed. Must be used with end. Mutually exclusive with lines.
+    pub begin: Option<usize>,
+    /// End line, 1-indexed. Must be used with begin. Mutually exclusive with lines.
+    pub end: Option<usize>,
     /// Session name (uses current if not provided)
     pub session_name: Option<String>,
 }
@@ -171,8 +175,13 @@ impl ZellijMcpServer {
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         match self.manager.resolve_session(req.session_name.clone()) {
             Ok(mgr) => {
+                let range = match (req.lines, req.begin, req.end) {
+                    (Some(n), _, _) => DumpRange::Last(n),
+                    (_, Some(b), Some(e)) => DumpRange::Range { begin: b, end: e },
+                    _ => DumpRange::Viewport,
+                };
                 // Use Manager's API
-                match mgr.dump_screen(req.full) {
+                match mgr.dump_screen(&range) {
                     Ok((content, _)) => {
                         tracing::info!("Screen dumped");
                         Ok(CallToolResult::success(vec![Content::text(content)]))
