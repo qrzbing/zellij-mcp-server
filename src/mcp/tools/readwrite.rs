@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use rmcp::{
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
     model::{CallToolResult, Content},
@@ -43,11 +45,17 @@ pub struct SendKeyRequest {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct DumpScreenRequest {
-    /// Optional file path to save the dump (stdout if not provided)
-    pub path: Option<String>,
     /// Include full scrollback history (default: false)
     #[serde(default)]
     pub full: bool,
+    /// Session name (uses current if not provided)
+    pub session_name: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct SetLogDirRequest {
+    /// Path to write logs to
+    pub dir: PathBuf,
     /// Session name (uses current if not provided)
     pub session_name: Option<String>,
 }
@@ -150,8 +158,13 @@ impl ZellijMcpServer {
         }
     }
 
-    /// Dump the current screen content
-    #[tool(description = "Dump screen content to file or stdout")]
+    /// Dump current screen content to dir or stdout.
+    ///
+    /// Note:
+    ///  - dump to dir will also dump to stdout
+    ///  - filename is not needed, by default will be datetime
+    ///  - filename is used for human readability, llm should not rely on it
+    #[tool]
     async fn dump_screen(
         &self,
         Parameters(req): Parameters<DumpScreenRequest>,
@@ -159,14 +172,10 @@ impl ZellijMcpServer {
         match self.manager.resolve_session(req.session_name.clone()) {
             Ok(mgr) => {
                 // Use Manager's API
-                match mgr.dump_screen(req.path.clone(), req.full) {
-                    Ok(content) => {
-                        let msg = match req.path {
-                            Some(ref path) => format!("Dumped to: {}", path),
-                            None => content,
-                        };
+                match mgr.dump_screen(req.full) {
+                    Ok((content, _)) => {
                         tracing::info!("Screen dumped");
-                        Ok(CallToolResult::success(vec![Content::text(msg)]))
+                        Ok(CallToolResult::success(vec![Content::text(content)]))
                     }
                     Err(e) => {
                         tracing::error!("Failed to dump screen: {}", e);
@@ -181,6 +190,25 @@ impl ZellijMcpServer {
                 "Failed to resolve session: {}",
                 e
             ))])),
+        }
+    }
+
+    /// Set log directory, all dump screen logs will be written to this directory
+    #[tool]
+    async fn set_log_dir(
+        &self,
+        Parameters(req): Parameters<SetLogDirRequest>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        tracing::info!(log_dir = %req.dir.display(), "Setting log dir");
+        match self.manager.set_session_log_dir(req.session_name, req.dir) {
+            Ok(_) => Ok(CallToolResult::success(vec![Content::text("Log dir set")])),
+            Err(e) => {
+                tracing::error!("Failed to set log dir: {}", e);
+                Ok(CallToolResult::error(vec![Content::text(format!(
+                    "Failed: {}",
+                    e
+                ))]))
+            }
         }
     }
 }

@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use anyhow::{Context, Ok};
 use clap::{Parser, Subcommand};
 use colored::Colorize;
@@ -36,12 +38,18 @@ pub enum DumpCommand {
     /// Dump current screen
     #[command(alias = "s")]
     Screen {
-        /// Optional output file path
-        path: Option<String>,
-
         /// Dump with full scrollback
         #[arg(short = 'f', long)]
         full: bool,
+    },
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum SetCommand {
+    /// If set LogDir, all dump screen commands will log to LogDir
+    LogDir {
+        /// Path to the LogDir
+        path: PathBuf,
     },
 }
 
@@ -55,9 +63,22 @@ pub enum ReplCommand {
         session_name: String,
     },
 
+    /// Close current tab
+    CloseTab,
+
     /// Detach from the current session
     #[command(alias = "d")]
     Detach,
+
+    /// Dump the current screen
+    Dump {
+        #[command(subcommand)]
+        dump_command: DumpCommand,
+    },
+
+    /// Exit the interactive shell
+    #[command(alias = "q", alias = "quit")]
+    Exit,
 
     /// List active sessions or tabs
     #[command(alias = "ls")]
@@ -65,13 +86,6 @@ pub enum ReplCommand {
         /// Filter: "session" (or "s") | "tab" (or "t")
         filter: String,
     },
-
-    /// Show current layout
-    #[command(alias = "layout", name = "show-layout")]
-    ShowLayout,
-
-    /// Close current tab
-    CloseTab,
 
     /// Create a new tab
     #[command(alias = "n", name = "new")]
@@ -87,6 +101,32 @@ pub enum ReplCommand {
         tab_name: String,
     },
 
+    /// Rename current tab or session
+    #[command(alias = "r")]
+    Rename {
+        #[command(subcommand)]
+        target: RenameTarget,
+    },
+
+    /// Send a specific key to the current tab
+    Send {
+        /// Key to send (e.g., ctrl+c, enter, esc, f1)
+        key: String,
+    },
+
+    /// Set some config
+    Set {
+        #[command(subcommand)]
+        set_command: SetCommand,
+    },
+
+    /// Show current layout
+    #[command(alias = "layout", name = "show-layout")]
+    ShowLayout,
+
+    /// Show MCP status
+    Status,
+
     /// Write text to the current tab
     #[command(alias = "w")]
     Write {
@@ -98,32 +138,6 @@ pub enum ReplCommand {
         #[arg(required = true)]
         texts: Vec<String>,
     },
-
-    /// Send a specific key to the current tab
-    Send {
-        /// Key to send (e.g., ctrl+c, enter, esc, f1)
-        key: String,
-    },
-
-    /// Dump the current screen
-    Dump {
-        #[command(subcommand)]
-        dump_command: DumpCommand,
-    },
-
-    /// Rename current tab or session
-    #[command(alias = "r")]
-    Rename {
-        #[command(subcommand)]
-        target: RenameTarget,
-    },
-
-    /// Show MCP status
-    Status,
-
-    /// Exit the interactive shell
-    #[command(alias = "q", alias = "quit")]
-    Exit,
 }
 
 pub struct CommandExecutor;
@@ -136,9 +150,25 @@ impl CommandExecutor {
                 Self::attach_session(session_name, context)?;
                 Ok(false)
             }
+            ReplCommand::CloseTab => {
+                Self::close_tab(context)?;
+                Ok(false)
+            }
             ReplCommand::Detach => {
                 Self::detach_session(context);
                 Ok(false)
+            }
+            ReplCommand::Dump { dump_command } => {
+                match dump_command {
+                    DumpCommand::Screen { full } => {
+                        Self::dump_screen(context, full)?;
+                    }
+                }
+                Ok(false)
+            }
+            ReplCommand::Exit => {
+                println!("{}", "Goodbye!".green());
+                Ok(true)
             }
             ReplCommand::List { filter } => {
                 match filter.as_str() {
@@ -154,17 +184,33 @@ impl CommandExecutor {
                 }
                 Ok(false)
             }
-            // Layout Commands
-            ReplCommand::CloseTab => {
-                Self::close_tab(context)?;
-                Ok(false)
-            }
             ReplCommand::NewTab { name } => {
                 Self::new_tab(context, name.clone())?;
                 Ok(false)
             }
+            ReplCommand::Rename { target } => {
+                Self::rename(context, target)?;
+                Ok(false)
+            }
+            ReplCommand::Send { key } => {
+                let (bare_key, modifiers) = manager::parse_key_string(&key)?;
+                Self::send_key_to_tab(context, bare_key, modifiers)?;
+                Ok(false)
+            }
+            ReplCommand::Set { set_command } => {
+                match set_command {
+                    SetCommand::LogDir { path } => {
+                        Self::set_log_dir(context, path.clone())?;
+                    }
+                }
+                Ok(false)
+            }
             ReplCommand::ShowLayout => {
                 Self::show_layout(context)?;
+                Ok(false)
+            }
+            ReplCommand::Status => {
+                Self::show_status(context);
                 Ok(false)
             }
             ReplCommand::Switch { tab_name } => {
@@ -178,33 +224,6 @@ impl CommandExecutor {
                     Self::write_to_tab(context, texts[0].clone(), !no_enter)?;
                 }
                 Ok(false)
-            }
-            ReplCommand::Send { key } => {
-                let (bare_key, modifiers) = manager::parse_key_string(&key)?;
-                Self::send_key_to_tab(context, bare_key, modifiers)?;
-                Ok(false)
-            }
-            ReplCommand::Dump { dump_command } => {
-                match dump_command {
-                    DumpCommand::Screen { path, full } => {
-                        Self::dump_screen(context, path, full)?;
-                    }
-                }
-                Ok(false)
-            }
-            // Other Commands
-            ReplCommand::Rename { target } => {
-                Self::rename(context, target)?;
-                Ok(false)
-            }
-            ReplCommand::Status => {
-                Self::show_status(context);
-                Ok(false)
-            }
-
-            ReplCommand::Exit => {
-                println!("{}", "Goodbye!".green());
-                Ok(true)
             }
         }
     }
@@ -265,5 +284,14 @@ impl CommandExecutor {
         };
 
         println!("current session: {}", session_name);
+    }
+
+    fn set_log_dir(context: &mut CliContext, path: PathBuf) -> anyhow::Result<()> {
+        let mgr = context
+            .manager_mut()
+            .with_context(|| "Not attached to any session")?;
+
+        mgr.set_log_dir(path.clone())?;
+        Ok(())
     }
 }

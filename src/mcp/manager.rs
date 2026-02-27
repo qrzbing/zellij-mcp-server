@@ -130,4 +130,26 @@ impl SessionManager {
         // ZellijSessionManager communicates via socket, so clone is fine
         self.resolve_session(name_opt)
     }
+
+    // Set log directory for a session, modifying the stored instance directly
+    pub fn set_session_log_dir(&self, name_opt: Option<String>, dir: PathBuf) -> Result<()> {
+        let name = match name_opt {
+            Some(n) => n,
+            None => {
+                let current = self.current_session.lock().unwrap();
+                current.as_ref().cloned().ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "No session name provided and no current session is set. \
+                       Use 'attach_session' to attach to a session first."
+                    )
+                })?
+            }
+        };
+
+        let mut instances = self.instances.lock().unwrap();
+        let mgr = instances
+            .get_mut(&name)
+            .ok_or_else(|| anyhow::anyhow!("Session '{}' not attached", name))?;
+        mgr.set_log_dir(dir)
+    }
 }

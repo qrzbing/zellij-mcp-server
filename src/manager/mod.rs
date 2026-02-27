@@ -20,6 +20,8 @@ pub struct ZellijSessionManager {
     socket_path: PathBuf,
     /// Current Tab Name
     current_tab_name: Option<String>,
+    /// Dump screen to directory in this session
+    dump_screen_dir: Option<PathBuf>,
 }
 
 impl ZellijSessionManager {
@@ -34,6 +36,7 @@ impl ZellijSessionManager {
             session_name: session_name.clone(),
             socket_path,
             current_tab_name: None,
+            dump_screen_dir: None,
         };
 
         mgr.refresh_current_tab().with_context(|| {
@@ -46,5 +49,14 @@ impl ZellijSessionManager {
         debug!("Current panel: {:?}", mgr.current_tab_name());
 
         Ok(mgr)
+    }
+
+    pub fn set_log_dir(&mut self, path: PathBuf) -> anyhow::Result<()> {
+        if !path.exists() {
+            std::fs::create_dir_all(&path)?;
+        }
+        debug!("Set log dir to: {}", path.display());
+        self.dump_screen_dir = Some(path);
+        Ok(())
     }
 }

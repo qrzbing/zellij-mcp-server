@@ -1,6 +1,7 @@
 use std::{collections::BTreeSet, fs, path::PathBuf};
 
-use anyhow::Context;
+use anyhow::{Context, Ok};
+use chrono::Local;
 use tracing::debug;
 use zellij_utils::{
     cli::CliAction,
@@ -168,47 +169,42 @@ impl ZellijSessionManager {
         Ok(())
     }
 
-    pub fn dump_screen(&self, path: Option<String>, full: bool) -> anyhow::Result<String> {
+    pub fn dump_screen(&self, full: bool) -> anyhow::Result<(String, Option<PathBuf>)> {
         let err_context = || "Failed to dump screen";
 
-        if let Some(file_path) = path {
-            let path_buf = PathBuf::from(file_path);
+        let (dump_file_path, do_remove) = match self.dump_screen_dir {
+            Some(ref path) => {
+                let current_time = Local::now().format("%Y-%m-%d-%H-%M-%S").to_string();
+                (
+                    PathBuf::from(path).join(format!("zellij-dump-{}.txt", current_time)),
+                    false,
+                )
+            }
+            None => (
+                std::env::temp_dir().join(format!("zellij-dump-{}.txt", std::process::id())),
+                true,
+            ),
+        };
 
-            self.send_action(
-                CliAction::DumpScreen {
-                    path: path_buf.clone(),
-                    full,
-                },
-                None,
-            )
-            .with_context(err_context)?;
+        self.send_action(
+            CliAction::DumpScreen {
+                path: dump_file_path.clone(),
+                full,
+            },
+            None,
+        )
+        .with_context(err_context)?;
 
-            debug!("Dumped screen to file: {:?}", path_buf);
+        std::thread::sleep(std::time::Duration::from_millis(100));
 
-            Ok(String::new())
+        let content = fs::read_to_string(&dump_file_path)
+            .with_context(|| format!("Failed to read temp file: {:?}", dump_file_path))?;
+
+        if do_remove {
+            let _ = fs::remove_file(&dump_file_path);
+            Ok((content, None))
         } else {
-            let temp_file =
-                std::env::temp_dir().join(format!("zellij-dump-{}.txt", std::process::id()));
-
-            self.send_action(
-                CliAction::DumpScreen {
-                    path: temp_file.clone(),
-                    full,
-                },
-                None,
-            )
-            .with_context(err_context)?;
-
-            std::thread::sleep(std::time::Duration::from_millis(100));
-
-            let content = fs::read_to_string(&temp_file)
-                .with_context(|| format!("Failed to read temp file: {:?}", temp_file))?;
-
-            let _ = fs::remove_file(&temp_file);
-
-            debug!("Dumped screen to stdout (via temp file)");
-
-            Ok(content)
+            Ok((content, Some(dump_file_path)))
         }
     }
 }

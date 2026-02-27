@@ -66,23 +66,19 @@ impl CommandExecutor {
         Ok(())
     }
 
-    pub(super) fn dump_screen(
-        context: &mut CliContext,
-        path: Option<String>,
-        full: bool,
-    ) -> anyhow::Result<()> {
+    pub(super) fn dump_screen(context: &mut CliContext, full: bool) -> anyhow::Result<()> {
         let mgr = context
             .manager_mut()
             .with_context(|| "Not attached to any session")?;
 
-        let content = mgr.dump_screen(path.clone(), full)?;
+        let (content, path) = mgr.dump_screen(full)?;
 
         match path {
             Some(ref file_path) => {
                 let mode = if full { "with full scrollback" } else { "" };
                 println!(
                     "{}",
-                    format!("✓ Dumped screen {} to: {}", mode, file_path).green()
+                    format!("✓ Dumped screen {} to: {}", mode, file_path.display()).green()
                 );
             }
             None => {
