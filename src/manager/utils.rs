@@ -1,4 +1,5 @@
 use std::collections::BTreeSet;
+
 use zellij_utils::data::{BareKey, KeyModifier};
 
 /// Process escape sequences in input string

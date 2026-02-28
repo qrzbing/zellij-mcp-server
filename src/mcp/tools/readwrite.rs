@@ -37,7 +37,15 @@ pub struct WriteMultipleRequest {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct SendKeyRequest {
-    /// Key to send (e.g., "enter", "tab", "ctrl+c", "f1")
+    /// Key to send
+    ///
+    /// Supported formats:
+    ///   ctrl+c, ctrl+d, ctrl+z, ctrl+l  (ctrl+<key> or ^<key>)
+    ///   alt+<char>
+    ///   enter/return, tab, backspace/bs, esc/escape
+    ///   delete/del, insert/ins, home, end, pageup/pgup, pagedown/pgdn
+    ///   up, down, left, right, f1-f12
+    ///   <single-char>
     pub key: String,
     /// Session name (uses current if not provided)
     pub session_name: Option<String>,

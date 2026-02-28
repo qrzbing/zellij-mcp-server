@@ -211,21 +211,30 @@ impl ZellijSessionManager {
         let content = fs::read_to_string(&dump_file_path)
             .with_context(|| format!("Failed to read temp file: {:?}", dump_file_path))?;
 
+        let all_lines: Vec<&str> = content.lines().collect();
+        let first_valid = all_lines.iter().position(|line| !line.trim().is_empty());
+        let last_valid = all_lines.iter().rposition(|line| !line.trim().is_empty());
+
+        let cleaned_lines = match (first_valid, last_valid) {
+            (Some(start), Some(end)) => &all_lines[start..=end],
+            _ => &[] as &[&str],
+        };
+
         let result = match range {
-            DumpRange::Viewport => content,
-            &DumpRange::Last(n) => content
-                .lines()
+            DumpRange::Viewport => cleaned_lines.join("\n"),
+            &DumpRange::Last(n) => cleaned_lines
+                .iter()
                 .rev()
                 .take(n)
-                .collect::<Vec<_>>()
-                .into_iter()
                 .rev()
+                .copied()
                 .collect::<Vec<_>>()
                 .join("\n"),
-            &DumpRange::Range { begin, end } => content
-                .lines()
-                .skip(begin.saturating_sub(1)) // 1-indexed
+            &DumpRange::Range { begin, end } => cleaned_lines
+                .iter()
+                .skip(begin.saturating_sub(1))
                 .take(end.saturating_sub(begin) + 1)
+                .copied()
                 .collect::<Vec<_>>()
                 .join("\n"),
         };

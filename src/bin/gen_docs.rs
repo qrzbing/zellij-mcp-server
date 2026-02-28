@@ -19,7 +19,7 @@ fn render_subcmd_docs(doc: &mut String, cmd: &mut clap::Command, prefix: &str, d
     let heading = "#".repeat(depth);
     doc.push_str(&format!("{} {}\n\n", heading, full_path));
     doc.push_str(&format!("```text\n>>> {} --help\n", full_path));
-    doc.push_str(&cmd.render_help().to_string()); // &mut 借用结束
+    doc.push_str(&cmd.render_long_help().to_string()); // &mut 借用结束
     doc.push_str("```\n\n");
 
     // 递归处理子命令，depth+1 加深标题层级
@@ -126,23 +126,27 @@ fn gen_mcp_docs() -> std::io::Result<()> {
                 .map(|arr| arr.iter().filter_map(|v| v.as_str()).collect())
                 .unwrap_or_default();
 
-            doc.push_str("| Parameter | Type | Required | Description |\n");
-            doc.push_str("|-----------|------|:--------:|-------------|\n");
+            doc.push_str("**Parameters:**\n\n");
             for (param, schema) in props {
-                let ty = extract_type(schema); // 处理 ["string","null"] 等 nullable 类型
+                let ty = extract_type(schema);
                 let desc = schema
                     .get("description")
                     .and_then(|d| d.as_str())
                     .unwrap_or("");
-                let req = if required.contains(&param.as_str()) {
-                    "yes"
+                let req_label = if required.contains(&param.as_str()) {
+                    "*(required)*"
                 } else {
-                    "no"
+                    "*(optional)*"
                 };
-                doc.push_str(&format!(
-                    "| `{}` | `{}` | {} | {} |\n",
-                    param, ty, req, desc
-                ));
+                doc.push_str(&format!("- **`{}`** `{}` {}\n\n", param, ty, req_label));
+                for line in desc.lines() {
+                    if line.trim().is_empty() {
+                        doc.push('\n');
+                    } else {
+                        doc.push_str(&format!("  {}\n", line));
+                    }
+                }
+                doc.push('\n');
             }
             doc.push('\n');
         }
