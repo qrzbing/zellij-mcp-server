@@ -40,8 +40,8 @@ pub struct RenameSessionRequest {
 
 #[tool_router(router = session_tools)]
 impl ZellijMcpServer {
-    /// Attach to a Zellij session
-    #[tool(description = "Attach to a Zellij session by name")]
+    /// Attach to a Zellij session by name
+    #[tool]
     async fn attach_session(
         &self,
         Parameters(req): Parameters<AttachSessionRequest>,
@@ -64,8 +64,8 @@ impl ZellijMcpServer {
         }
     }
 
-    /// Detach from a session
-    #[tool(description = "Detach from a Zellij session")]
+    /// Detach from a Zellij session
+    #[tool]
     async fn detach_session(
         &self,
         Parameters(req): Parameters<DetachSessionRequest>,
@@ -100,8 +100,8 @@ impl ZellijMcpServer {
         }
     }
 
-    /// List available sessions
-    #[tool(description = "List all available Zellij sessions")]
+    /// List all available Zellij sessions
+    #[tool]
     async fn list_sessions(&self) -> Result<CallToolResult, rmcp::ErrorData> {
         match self.manager.list_available() {
             Ok(sessions) => {
@@ -142,8 +142,8 @@ impl ZellijMcpServer {
         }
     }
 
-    /// Select current session
-    #[tool(description = "Set the current active session")]
+    /// Select the current active session
+    #[tool]
     async fn select_session(
         &self,
         Parameters(req): Parameters<SelectSessionRequest>,
@@ -169,8 +169,8 @@ impl ZellijMcpServer {
         }
     }
 
-    /// Get current session
-    #[tool(description = "Get the current active session name")]
+    /// Get the current active session name
+    #[tool]
     async fn get_current_session(&self) -> Result<CallToolResult, rmcp::ErrorData> {
         match self.manager.get_current_session_name() {
             Some(name) => Ok(CallToolResult::success(vec![Content::text(format!(
@@ -183,8 +183,8 @@ impl ZellijMcpServer {
         }
     }
 
-    /// Rename session
-    #[tool(description = "Rename a Zellij session")]
+    /// Rename a Zellij session
+    #[tool]
     async fn rename_session(
         &self,
         Parameters(req): Parameters<RenameSessionRequest>,

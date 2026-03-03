@@ -22,6 +22,8 @@ pub struct ZellijSessionManager {
     current_tab_name: Option<String>,
     /// Dump screen to directory in this session
     dump_screen_dir: Option<PathBuf>,
+    /// Last Dump Message
+    last_dump_message: Option<Vec<String>>,
 }
 
 impl ZellijSessionManager {
@@ -37,6 +39,7 @@ impl ZellijSessionManager {
             socket_path,
             current_tab_name: None,
             dump_screen_dir: None,
+            last_dump_message: None,
         };
 
         mgr.refresh_current_tab().with_context(|| {

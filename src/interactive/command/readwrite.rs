@@ -22,10 +22,9 @@ impl CommandExecutor {
             .with_context(|| "Not attached to any session")?;
 
         // Use Manager's high-level API
-        mgr.write_text(&text, add_newline)?;
+        let content = mgr.write_text(&text, add_newline)?;
 
-        let action = if add_newline { "command" } else { "text" };
-        println!("{}", format!("✓ Sent {} to current tab", action).green());
+        println!("{}", content);
 
         Ok(())
     }
@@ -39,12 +38,9 @@ impl CommandExecutor {
             .with_context(|| "Not attached to any session")?;
 
         // Use Manager's high-level API
-        mgr.write_multiple(&commands)?;
+        let content = mgr.write_multiple(&commands)?;
 
-        println!(
-            "{}",
-            format!("✓ Sent {} commands to current tab", commands.len()).green()
-        );
+        println!("{}", content);
 
         Ok(())
     }

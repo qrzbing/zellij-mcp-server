@@ -76,19 +76,20 @@ pub struct SetLogDirRequest {
 
 #[tool_router(router = readwrite_tools)]
 impl ZellijMcpServer {
-    /// Write text to the current tab
-    #[tool(description = "Write text to the current tab with optional newline")]
+    /// Write text to the current tab with optional newline.
+    /// This command will return last 20 lines by default.
+    #[tool]
     async fn write(
         &self,
         Parameters(req): Parameters<WriteRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         match self.manager.resolve_session(req.session_name.clone()) {
-            Ok(mgr) => {
+            Ok(mut mgr) => {
                 // Use Manager's high-level API (automatically processes escape sequences)
                 match mgr.write_text(&req.text, req.add_newline) {
-                    Ok(_) => {
+                    Ok(content) => {
                         let action = if req.add_newline { "command" } else { "text" };
-                        let msg = format!("Sent {} to current tab", action);
+                        let msg = format!("Sent {} to current tab\n{}", action, content);
                         tracing::info!("{}", msg);
                         Ok(CallToolResult::success(vec![Content::text(msg)]))
                     }
@@ -108,18 +109,18 @@ impl ZellijMcpServer {
         }
     }
 
-    /// Write multiple commands to the current tab
-    #[tool(description = "Write multiple commands, each followed by newline")]
+    /// Write multiple commands to the current tab, each followed by newline
+    #[tool]
     async fn write_multiple(
         &self,
         Parameters(req): Parameters<WriteMultipleRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         match self.manager.resolve_session(req.session_name.clone()) {
-            Ok(mgr) => {
+            Ok(mut mgr) => {
                 // Use Manager's high-level API
                 match mgr.write_multiple(&req.commands) {
-                    Ok(_) => {
-                        let msg = format!("Sent {} commands", req.commands.len());
+                    Ok(content) => {
+                        let msg = format!("Sent {} commands\n{}", req.commands.len(), content);
                         tracing::info!("{}", msg);
                         Ok(CallToolResult::success(vec![Content::text(msg)]))
                     }
@@ -139,8 +140,8 @@ impl ZellijMcpServer {
         }
     }
 
-    /// Send a special key to the current tab
-    #[tool(description = "Send a special key like 'enter', 'ctrl+c', 'f1'")]
+    /// Send a special key like 'enter', 'ctrl+c', 'f1'
+    #[tool]
     async fn send_key(
         &self,
         Parameters(req): Parameters<SendKeyRequest>,

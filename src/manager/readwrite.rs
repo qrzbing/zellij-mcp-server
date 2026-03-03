@@ -1,6 +1,6 @@
 use std::{collections::BTreeSet, fs, path::PathBuf};
 
-use anyhow::{Context, Ok};
+use anyhow::Context;
 use chrono::Local;
 use tracing::debug;
 use zellij_utils::{
@@ -86,7 +86,7 @@ impl ZellijSessionManager {
     /// mgr.write_text("echo hello", true)?;  // Execute command
     /// mgr.write_text("hello", false)?;       // Write text only
     /// ```
-    pub fn write_text(&self, text: &str, add_newline: bool) -> anyhow::Result<()> {
+    pub fn write_text(&mut self, text: &str, add_newline: bool) -> anyhow::Result<String> {
         let processed_text = process_escape_sequences(text);
         let content = if add_newline {
             format!("{}\n", processed_text)
@@ -96,9 +96,15 @@ impl ZellijSessionManager {
 
         self.write_to_pane(content)?;
 
-        debug!("Wrote text to pane: {:?} (newline: {})", text, add_newline);
+        std::thread::sleep(std::time::Duration::from_millis(100));
 
-        Ok(())
+        let result = self.dump_for_write();
+        let content = match result {
+            Ok(content) => content,
+            Err(_) => "[-] Failed to dump screen".to_string(),
+        };
+
+        Ok(content)
     }
 
     /// Write multiple commands to the pane (each automatically appends newline)
@@ -110,16 +116,22 @@ impl ZellijSessionManager {
     /// ```
     /// mgr.write_multiple(&["cd /tmp".to_string(), "ls -la".to_string()])?;
     /// ```
-    pub fn write_multiple(&self, commands: &[String]) -> anyhow::Result<()> {
+    pub fn write_multiple(&mut self, commands: &[String]) -> anyhow::Result<String> {
         for cmd in commands {
             let processed = process_escape_sequences(cmd);
             self.write_to_pane(format!("{}\n", processed))?;
             std::thread::sleep(std::time::Duration::from_millis(50));
         }
 
-        debug!("Wrote {} commands to pane", commands.len());
+        std::thread::sleep(std::time::Duration::from_millis(100));
 
-        Ok(())
+        let result = self.dump_for_write();
+        let content = match result {
+            Ok(content) => content,
+            Err(_) => "[-] Failed to dump screen".to_string(),
+        };
+
+        Ok(content)
     }
 
     /// Send a key by parsing a key string
@@ -178,9 +190,7 @@ impl ZellijSessionManager {
         Ok(())
     }
 
-    pub fn dump_screen(&self, range: &DumpRange) -> anyhow::Result<(String, Option<PathBuf>)> {
-        let full = !matches!(range, DumpRange::Viewport);
-
+    fn dump_screen_lines(&self) -> anyhow::Result<(Vec<String>, Option<PathBuf>)> {
         let err_context = || "Failed to dump screen";
 
         let (dump_file_path, do_remove) = match self.dump_screen_dir {
@@ -200,7 +210,7 @@ impl ZellijSessionManager {
         self.send_action(
             CliAction::DumpScreen {
                 path: dump_file_path.clone(),
-                full,
+                full: true,
             },
             None,
         )
@@ -220,30 +230,73 @@ impl ZellijSessionManager {
             _ => &[] as &[&str],
         };
 
+        let cleaned_vec: Vec<String> = cleaned_lines.iter().map(|&line| line.to_string()).collect();
+
+        if do_remove {
+            let _ = fs::remove_file(&dump_file_path);
+            Ok((cleaned_vec, None))
+        } else {
+            Ok((cleaned_vec, Some(dump_file_path)))
+        }
+    }
+
+    /// Dump the screen after writing command.
+    /// Lines are less than 20.
+    fn dump_for_write(&mut self) -> anyhow::Result<String> {
+        let (lines, _) = self.dump_screen_lines()?;
+
+        let mut new_start = 0;
+
+        if let Some(ref old_lines) = self.last_dump_message {
+            let match_end = old_lines.len().saturating_sub(1);
+
+            let common = (0..std::cmp::min(match_end, lines.len()))
+                .take_while(|&i| old_lines[i] == lines[i])
+                .count();
+
+            if common > 0 {
+                new_start = common.saturating_sub(1);
+            } else {
+                let max_possible_overlap = std::cmp::min(match_end, lines.len());
+                for i in (1..=max_possible_overlap).rev() {
+                    if old_lines[match_end - i..match_end] == lines[..i] {
+                        new_start = i.saturating_sub(1);
+                        break;
+                    }
+                }
+            }
+        }
+
+        let result_lines = &lines[new_start..];
+        let start_idx = result_lines.len().saturating_sub(20);
+        let final_lines = &result_lines[start_idx..];
+        let res_string = final_lines.join("\n");
+
+        self.last_dump_message = Some(lines);
+
+        Ok(res_string)
+    }
+
+    pub fn dump_screen(&self, range: &DumpRange) -> anyhow::Result<(String, Option<PathBuf>)> {
+        let (cleaned_vec, dump_file) = self.dump_screen_lines()?;
+
         let result = match range {
-            DumpRange::Viewport => cleaned_lines.join("\n"),
-            &DumpRange::Last(n) => cleaned_lines
-                .iter()
+            DumpRange::Viewport => cleaned_vec.join("\n"),
+            &DumpRange::Last(n) => cleaned_vec
+                .into_iter()
                 .rev()
                 .take(n)
                 .rev()
-                .copied()
                 .collect::<Vec<_>>()
                 .join("\n"),
-            &DumpRange::Range { begin, end } => cleaned_lines
-                .iter()
+            &DumpRange::Range { begin, end } => cleaned_vec
+                .into_iter()
                 .skip(begin.saturating_sub(1))
                 .take(end.saturating_sub(begin) + 1)
-                .copied()
                 .collect::<Vec<_>>()
                 .join("\n"),
         };
 
-        if do_remove {
-            let _ = fs::remove_file(&dump_file_path);
-            Ok((result, None))
-        } else {
-            Ok((result, Some(dump_file_path)))
-        }
+        Ok((result, dump_file))
     }
 }
