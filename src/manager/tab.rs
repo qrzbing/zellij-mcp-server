@@ -93,13 +93,15 @@ impl ZellijSessionManager {
     }
 
     pub fn switch_to_tab(&mut self, tab_name: String) -> Result<()> {
-        self.send_action(
+        self.send_action_as_ui_client(
             CliAction::GoToTabName {
                 name: tab_name.clone(),
                 create: false,
             },
             None,
         )?;
+
+        std::thread::sleep(std::time::Duration::from_millis(100));
 
         // Update cache
         self.current_tab_name = Some(tab_name.clone());

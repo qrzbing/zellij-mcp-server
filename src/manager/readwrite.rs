@@ -207,7 +207,7 @@ impl ZellijSessionManager {
             ),
         };
 
-        self.send_action(
+        self.send_action_as_ui_client(
             CliAction::DumpScreen {
                 path: dump_file_path.clone(),
                 full: true,
@@ -215,8 +215,6 @@ impl ZellijSessionManager {
             None,
         )
         .with_context(err_context)?;
-
-        std::thread::sleep(std::time::Duration::from_millis(100));
 
         let content = fs::read_to_string(&dump_file_path)
             .with_context(|| format!("Failed to read temp file: {:?}", dump_file_path))?;
