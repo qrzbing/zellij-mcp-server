@@ -2,7 +2,7 @@ use std::str::FromStr;
 
 use anyhow::Result;
 use kdl::KdlDocument;
-use tracing::debug;
+use tracing::{debug, warn};
 use zellij_utils::cli::CliAction;
 
 use super::ZellijSessionManager;
@@ -69,6 +69,42 @@ impl ZellijSessionManager {
         Ok(None)
     }
 
+    fn extract_connected_clients_kdl(layout: &str) -> Result<Option<usize>> {
+        let document = KdlDocument::from_str(layout)
+            .map_err(|e| anyhow::anyhow!("Failed to parse KDL layout: {}", e))?;
+
+        let Some(node) = document.get("connected_clients") else {
+            return Ok(None);
+        };
+
+        let count = node
+            .entries()
+            .iter()
+            .find_map(|entry| entry.value().as_i64())
+            .and_then(|v| usize::try_from(v).ok());
+
+        Ok(count)
+    }
+
+    pub(crate) fn has_active_ui_clients(&self) -> bool {
+        let layout = match self.send_action(CliAction::DumpLayout, None) {
+            Ok(layout) => layout,
+            Err(e) => {
+                warn!("Failed to detect connected clients from DumpLayout: {}", e);
+                return false;
+            }
+        };
+
+        match Self::extract_connected_clients_kdl(&layout) {
+            Ok(Some(count)) => count > 0,
+            Ok(None) => false,
+            Err(e) => {
+                warn!("Failed to parse connected_clients from DumpLayout: {}", e);
+                false
+            }
+        }
+    }
+
     pub fn list_tabs(&self) -> Result<Vec<String>> {
         let tab_names_str = self.send_action(CliAction::QueryTabNames, None)?;
         let tab_names: Vec<String> = tab_names_str
@@ -93,15 +129,15 @@ impl ZellijSessionManager {
     }
 
     pub fn switch_to_tab(&mut self, tab_name: String) -> Result<()> {
-        self.send_action_as_ui_client(
-            CliAction::GoToTabName {
-                name: tab_name.clone(),
-                create: false,
-            },
-            None,
-        )?;
-
-        std::thread::sleep(std::time::Duration::from_millis(100));
+        let switch_action = CliAction::GoToTabName {
+            name: tab_name.clone(),
+            create: false,
+        };
+        if self.has_active_ui_clients() {
+            self.send_action(switch_action, None)?;
+        } else {
+            self.send_action_as_ui_client(switch_action, None)?;
+        }
 
         // Update cache
         self.current_tab_name = Some(tab_name.clone());

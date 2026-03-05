@@ -207,14 +207,17 @@ impl ZellijSessionManager {
             ),
         };
 
-        self.send_action_as_ui_client(
-            CliAction::DumpScreen {
-                path: dump_file_path.clone(),
-                full: true,
-            },
-            None,
-        )
-        .with_context(err_context)?;
+        let dump_action = CliAction::DumpScreen {
+            path: dump_file_path.clone(),
+            full: true,
+        };
+        if self.has_active_ui_clients() {
+            self.send_action(dump_action, None)
+                .with_context(err_context)?;
+        } else {
+            self.send_action_as_ui_client(dump_action, None)
+                .with_context(err_context)?;
+        }
 
         let content = fs::read_to_string(&dump_file_path)
             .with_context(|| format!("Failed to read temp file: {:?}", dump_file_path))?;
