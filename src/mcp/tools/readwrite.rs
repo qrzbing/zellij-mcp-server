@@ -83,6 +83,7 @@ impl ZellijMcpServer {
         &self,
         Parameters(req): Parameters<WriteRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
+        let _op_guard = self.op_lock.lock().await;
         match self
             .manager
             .with_session_mut(req.session_name.clone(), |mgr| {
@@ -110,6 +111,7 @@ impl ZellijMcpServer {
         &self,
         Parameters(req): Parameters<WriteMultipleRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
+        let _op_guard = self.op_lock.lock().await;
         match self
             .manager
             .with_session_mut(req.session_name.clone(), |mgr| {
@@ -136,6 +138,7 @@ impl ZellijMcpServer {
         &self,
         Parameters(req): Parameters<SendKeyRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
+        let _op_guard = self.op_lock.lock().await;
         match self.manager.with_session(req.session_name.clone(), |mgr| {
             mgr.send_key_string(&req.key)
         }) {
@@ -165,6 +168,7 @@ impl ZellijMcpServer {
         &self,
         Parameters(req): Parameters<DumpScreenRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
+        let _op_guard = self.op_lock.lock().await;
         let range = match (req.lines, req.begin, req.end) {
             (Some(n), _, _) => DumpRange::Last(n),
             (_, Some(b), Some(e)) => DumpRange::Range { begin: b, end: e },
@@ -194,6 +198,7 @@ impl ZellijMcpServer {
         &self,
         Parameters(req): Parameters<SetLogDirRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
+        let _op_guard = self.op_lock.lock().await;
         tracing::info!(log_dir = %req.dir.display(), "Setting log dir");
         match self.manager.set_session_log_dir(req.session_name, req.dir) {
             Ok(_) => Ok(CallToolResult::success(vec![Content::text("Log dir set")])),

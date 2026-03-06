@@ -1,9 +1,12 @@
+use std::sync::Arc;
+
 use rmcp::{
     ServerHandler,
     handler::server::tool::ToolRouter,
     model::{Implementation, ProtocolVersion, ServerCapabilities, ServerInfo},
     tool_handler,
 };
+use tokio::sync::Mutex as AsyncMutex;
 
 pub mod manager;
 pub mod tools;
@@ -15,6 +18,7 @@ use manager::SessionManager;
 #[derive(Clone)]
 pub struct ZellijMcpServer {
     pub manager: SessionManager,
+    pub op_lock: Arc<AsyncMutex<()>>,
     tool_router: ToolRouter<Self>,
 }
 
@@ -30,6 +34,7 @@ impl ZellijMcpServer {
 
         Self {
             manager,
+            op_lock: Arc::new(AsyncMutex::new(())),
             tool_router,
         }
     }

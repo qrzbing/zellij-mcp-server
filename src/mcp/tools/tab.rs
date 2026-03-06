@@ -62,6 +62,7 @@ impl ZellijMcpServer {
         &self,
         Parameters(req): Parameters<NewTabRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
+        let _op_guard = self.op_lock.lock().await;
         let name = req.name.clone();
         let session_name = req.session_name.clone();
         match self
@@ -91,6 +92,7 @@ impl ZellijMcpServer {
         &self,
         Parameters(req): Parameters<CloseTabRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
+        let _op_guard = self.op_lock.lock().await;
         match self
             .manager
             .with_session_mut(req.session_name, |mgr| mgr.close_tab())
@@ -117,6 +119,7 @@ impl ZellijMcpServer {
         &self,
         Parameters(req): Parameters<ListTabsRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
+        let _op_guard = self.op_lock.lock().await;
         match self.manager.with_session_mut(req.session_name, |mgr| {
             if let Err(e) = mgr.refresh_current_tab() {
                 tracing::warn!("Failed to refresh current tab before list_tabs: {}", e);
@@ -154,12 +157,13 @@ impl ZellijMcpServer {
         }
     }
 
-    /// Switch tab
-    #[tool(description = "Switch to a specific tab")]
+    /// Switch to specific tab
+    #[tool]
     async fn switch_tab(
         &self,
         Parameters(req): Parameters<SwitchTabRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
+        let _op_guard = self.op_lock.lock().await;
         let tab_name = req.tab_name.clone();
         match self.manager.with_session_mut(req.session_name, move |mgr| {
             mgr.switch_to_tab(tab_name.clone())
@@ -181,12 +185,13 @@ impl ZellijMcpServer {
         }
     }
 
-    /// Rename tab
-    #[tool(description = "Rename the current tab")]
+    /// Rename current tab
+    #[tool]
     async fn rename_tab(
         &self,
         Parameters(req): Parameters<RenameTabRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
+        let _op_guard = self.op_lock.lock().await;
         let new_name = req.new_name.clone();
         match self.manager.with_session_mut(req.session_name, move |mgr| {
             if let Some(name) = new_name {
@@ -211,12 +216,13 @@ impl ZellijMcpServer {
         }
     }
 
-    /// Show layout
-    #[tool(description = "Show session layout")]
+    /// Show session layout
+    #[tool]
     async fn show_layout(
         &self,
         Parameters(req): Parameters<ShowLayoutRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
+        let _op_guard = self.op_lock.lock().await;
         match self.manager.with_session(req.session_name, |mgr| {
             mgr.send_action(zellij_utils::cli::CliAction::DumpLayout, None)
         }) {

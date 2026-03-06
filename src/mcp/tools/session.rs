@@ -46,6 +46,7 @@ impl ZellijMcpServer {
         &self,
         Parameters(req): Parameters<AttachSessionRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
+        let _op_guard = self.op_lock.lock().await;
         match self.manager.attach(req.session_name.clone()) {
             Ok(_) => {
                 tracing::info!("Attached to '{}'", req.session_name);
@@ -70,6 +71,7 @@ impl ZellijMcpServer {
         &self,
         Parameters(req): Parameters<DetachSessionRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
+        let _op_guard = self.op_lock.lock().await;
         let name = match req.session_name {
             Some(n) => n,
             None => match self.manager.get_current_session_name() {
@@ -103,6 +105,7 @@ impl ZellijMcpServer {
     /// List all available Zellij sessions
     #[tool]
     async fn list_sessions(&self) -> Result<CallToolResult, rmcp::ErrorData> {
+        let _op_guard = self.op_lock.lock().await;
         match self.manager.list_available() {
             Ok(sessions) => {
                 if sessions.is_empty() {
@@ -148,6 +151,7 @@ impl ZellijMcpServer {
         &self,
         Parameters(req): Parameters<SelectSessionRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
+        let _op_guard = self.op_lock.lock().await;
         match self
             .manager
             .set_current_session(Some(req.session_name.clone()))
@@ -172,6 +176,7 @@ impl ZellijMcpServer {
     /// Get the current active session name
     #[tool]
     async fn get_current_session(&self) -> Result<CallToolResult, rmcp::ErrorData> {
+        let _op_guard = self.op_lock.lock().await;
         match self.manager.get_current_session_name() {
             Some(name) => Ok(CallToolResult::success(vec![Content::text(format!(
                 "Current: {}",
@@ -189,6 +194,7 @@ impl ZellijMcpServer {
         &self,
         Parameters(req): Parameters<RenameSessionRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
+        let _op_guard = self.op_lock.lock().await;
         let new_name = req.new_name.clone();
         match self
             .manager
