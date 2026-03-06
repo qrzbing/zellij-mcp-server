@@ -58,6 +58,7 @@ Options:
 
 - MCP 服务：运行在 <http://127.0.0.1:3000>，更详细的用法见 [MCP 使用文档](./docs/mcp-command.md)
 - CLI 服务：用于调试实现的各类功能，更详细的用法见 [CLI 使用文档](./docs/cli-command.md)
+- 项目文档入口：见 [Documentation](./docs/README.md)
 
 ## TODOs
 
