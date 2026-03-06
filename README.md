@@ -34,6 +34,19 @@ just build
 just build-static
 ```
 
+Nix 构建（动态/静态）
+
+```sh
+# 动态链接（glibc）
+nix build .#zellij-mcp-server-dynamic
+
+# 静态链接（musl）
+nix build .#zellij-mcp-server-static
+
+# 默认包（当前为动态链接）
+nix build .#zellij-mcp-server
+```
+
 或使用 Release 中发布的二进制（Coming Soon!）
 
 ## 使用方法
