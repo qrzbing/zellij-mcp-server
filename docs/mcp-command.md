@@ -120,7 +120,7 @@ Rename a Zellij session
 
 ## rename_tab
 
-Rename the current tab
+Rename current tab
 
 **Parameters:**
 
@@ -195,7 +195,7 @@ Show session layout
 
 ## switch_tab
 
-Switch to a specific tab
+Switch to specific tab
 
 **Parameters:**
 
