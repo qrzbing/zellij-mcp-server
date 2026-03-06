@@ -62,28 +62,26 @@ impl ZellijMcpServer {
         &self,
         Parameters(req): Parameters<NewTabRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        match self.manager.resolve_session_mut(req.session_name) {
-            Ok(mut mgr) => match mgr.new_tab(req.name.clone()) {
-                Ok(_) => {
-                    let msg = req
-                        .name
-                        .map(|n| format!("Created tab '{}'", n))
-                        .unwrap_or_else(|| "Created new tab".to_string());
-                    tracing::info!("{}", msg);
-                    Ok(CallToolResult::success(vec![Content::text(msg)]))
-                }
-                Err(e) => {
-                    tracing::error!("Failed to create tab: {}", e);
-                    Ok(CallToolResult::error(vec![Content::text(format!(
-                        "Failed: {}",
-                        e
-                    ))]))
-                }
-            },
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(format!(
-                "Failed to resolve: {}",
-                e
-            ))])),
+        let name = req.name.clone();
+        let session_name = req.session_name.clone();
+        match self
+            .manager
+            .with_session_mut(session_name, move |mgr| mgr.new_tab(name))
+        {
+            Ok(created_name) => {
+                let msg = created_name
+                    .map(|n| format!("Created tab '{}'", n))
+                    .unwrap_or_else(|| "Created new tab".to_string());
+                tracing::info!("{}", msg);
+                Ok(CallToolResult::success(vec![Content::text(msg)]))
+            }
+            Err(e) => {
+                tracing::error!("Failed to create tab: {}", e);
+                Ok(CallToolResult::error(vec![Content::text(format!(
+                    "Failed: {}",
+                    e
+                ))]))
+            }
         }
     }
 
@@ -93,26 +91,23 @@ impl ZellijMcpServer {
         &self,
         Parameters(req): Parameters<CloseTabRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        match self.manager.resolve_session_mut(req.session_name) {
-            Ok(mut mgr) => match mgr.close_tab() {
-                Ok(_) => {
-                    tracing::info!("Closed tab");
-                    Ok(CallToolResult::success(vec![Content::text(
-                        "Closed tab".to_string(),
-                    )]))
-                }
-                Err(e) => {
-                    tracing::error!("Failed to close: {}", e);
-                    Ok(CallToolResult::error(vec![Content::text(format!(
-                        "Failed: {}",
-                        e
-                    ))]))
-                }
-            },
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(format!(
-                "Failed to resolve: {}",
-                e
-            ))])),
+        match self
+            .manager
+            .with_session_mut(req.session_name, |mgr| mgr.close_tab())
+        {
+            Ok(_) => {
+                tracing::info!("Closed tab");
+                Ok(CallToolResult::success(vec![Content::text(
+                    "Closed tab".to_string(),
+                )]))
+            }
+            Err(e) => {
+                tracing::error!("Failed to close: {}", e);
+                Ok(CallToolResult::error(vec![Content::text(format!(
+                    "Failed: {}",
+                    e
+                ))]))
+            }
         }
     }
 
@@ -122,40 +117,40 @@ impl ZellijMcpServer {
         &self,
         Parameters(req): Parameters<ListTabsRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        match self.manager.resolve_session(req.session_name) {
-            Ok(mgr) => match mgr.list_tabs() {
-                Ok(tabs) => {
-                    if tabs.is_empty() {
-                        return Ok(CallToolResult::success(vec![Content::text(
-                            "No tabs".to_string(),
-                        )]));
-                    }
-
-                    let current = mgr.current_tab_name();
-                    let mut output = String::from("Tabs:\n");
-                    for tab in tabs {
-                        let marker = if current == Some(tab.as_str()) {
-                            " (current)"
-                        } else {
-                            ""
-                        };
-                        output.push_str(&format!("  - {}{}\n", tab, marker));
-                    }
-
-                    Ok(CallToolResult::success(vec![Content::text(output)]))
+        match self.manager.with_session_mut(req.session_name, |mgr| {
+            if let Err(e) = mgr.refresh_current_tab() {
+                tracing::warn!("Failed to refresh current tab before list_tabs: {}", e);
+            }
+            let tabs = mgr.list_tabs()?;
+            let current = mgr.current_tab_name().map(str::to_owned);
+            Ok((tabs, current))
+        }) {
+            Ok((tabs, current)) => {
+                if tabs.is_empty() {
+                    return Ok(CallToolResult::success(vec![Content::text(
+                        "No tabs".to_string(),
+                    )]));
                 }
-                Err(e) => {
-                    tracing::error!("Failed to list: {}", e);
-                    Ok(CallToolResult::error(vec![Content::text(format!(
-                        "Failed: {}",
-                        e
-                    ))]))
+
+                let mut output = String::from("Tabs:\n");
+                for tab in tabs {
+                    let marker = if current.as_deref() == Some(tab.as_str()) {
+                        " (current)"
+                    } else {
+                        ""
+                    };
+                    output.push_str(&format!("  - {}{}\n", tab, marker));
                 }
-            },
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(format!(
-                "Failed to resolve: {}",
-                e
-            ))])),
+
+                Ok(CallToolResult::success(vec![Content::text(output)]))
+            }
+            Err(e) => {
+                tracing::error!("Failed to list: {}", e);
+                Ok(CallToolResult::error(vec![Content::text(format!(
+                    "Failed: {}",
+                    e
+                ))]))
+            }
         }
     }
 
@@ -165,27 +160,24 @@ impl ZellijMcpServer {
         &self,
         Parameters(req): Parameters<SwitchTabRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        match self.manager.resolve_session_mut(req.session_name) {
-            Ok(mut mgr) => match mgr.switch_to_tab(req.tab_name.clone()) {
-                Ok(_) => {
-                    tracing::info!("Switched to '{}'", req.tab_name);
-                    Ok(CallToolResult::success(vec![Content::text(format!(
-                        "Switched to '{}'",
-                        req.tab_name
-                    ))]))
-                }
-                Err(e) => {
-                    tracing::error!("Failed to switch: {}", e);
-                    Ok(CallToolResult::error(vec![Content::text(format!(
-                        "Failed: {}",
-                        e
-                    ))]))
-                }
-            },
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(format!(
-                "Failed to resolve: {}",
-                e
-            ))])),
+        let tab_name = req.tab_name.clone();
+        match self.manager.with_session_mut(req.session_name, move |mgr| {
+            mgr.switch_to_tab(tab_name.clone())
+        }) {
+            Ok(_) => {
+                tracing::info!("Switched to '{}'", req.tab_name);
+                Ok(CallToolResult::success(vec![Content::text(format!(
+                    "Switched to '{}'",
+                    req.tab_name
+                ))]))
+            }
+            Err(e) => {
+                tracing::error!("Failed to switch: {}", e);
+                Ok(CallToolResult::error(vec![Content::text(format!(
+                    "Failed: {}",
+                    e
+                ))]))
+            }
         }
     }
 
@@ -195,34 +187,27 @@ impl ZellijMcpServer {
         &self,
         Parameters(req): Parameters<RenameTabRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        match self.manager.resolve_session_mut(req.session_name) {
-            Ok(mut mgr) => {
-                let result = if let Some(name) = req.new_name {
-                    mgr.rename_tab(name.clone())
-                        .map(|_| format!("Renamed to '{}'", name))
-                } else {
-                    mgr.undo_rename_tab()
-                        .map(|_| "Restored default name".to_string())
-                };
-
-                match result {
-                    Ok(msg) => {
-                        tracing::info!("{}", msg);
-                        Ok(CallToolResult::success(vec![Content::text(msg)]))
-                    }
-                    Err(e) => {
-                        tracing::error!("Failed to rename: {}", e);
-                        Ok(CallToolResult::error(vec![Content::text(format!(
-                            "Failed: {}",
-                            e
-                        ))]))
-                    }
-                }
+        let new_name = req.new_name.clone();
+        match self.manager.with_session_mut(req.session_name, move |mgr| {
+            if let Some(name) = new_name {
+                mgr.rename_tab(name.clone())
+                    .map(|_| format!("Renamed to '{}'", name))
+            } else {
+                mgr.undo_rename_tab()
+                    .map(|_| "Restored default name".to_string())
             }
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(format!(
-                "Failed to resolve: {}",
-                e
-            ))])),
+        }) {
+            Ok(msg) => {
+                tracing::info!("{}", msg);
+                Ok(CallToolResult::success(vec![Content::text(msg)]))
+            }
+            Err(e) => {
+                tracing::error!("Failed to rename: {}", e);
+                Ok(CallToolResult::error(vec![Content::text(format!(
+                    "Failed: {}",
+                    e
+                ))]))
+            }
         }
     }
 
@@ -232,27 +217,23 @@ impl ZellijMcpServer {
         &self,
         Parameters(req): Parameters<ShowLayoutRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        match self.manager.resolve_session(req.session_name) {
-            Ok(mgr) => match mgr.send_action(zellij_utils::cli::CliAction::DumpLayout, None) {
-                Ok(layout) => {
-                    tracing::info!("Retrieved layout");
-                    Ok(CallToolResult::success(vec![Content::text(format!(
-                        "Layout:\n{}",
-                        layout
-                    ))]))
-                }
-                Err(e) => {
-                    tracing::error!("Failed to get layout: {}", e);
-                    Ok(CallToolResult::error(vec![Content::text(format!(
-                        "Failed: {}",
-                        e
-                    ))]))
-                }
-            },
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(format!(
-                "Failed to resolve: {}",
-                e
-            ))])),
+        match self.manager.with_session(req.session_name, |mgr| {
+            mgr.send_action(zellij_utils::cli::CliAction::DumpLayout, None)
+        }) {
+            Ok(layout) => {
+                tracing::info!("Retrieved layout");
+                Ok(CallToolResult::success(vec![Content::text(format!(
+                    "Layout:\n{}",
+                    layout
+                ))]))
+            }
+            Err(e) => {
+                tracing::error!("Failed to get layout: {}", e);
+                Ok(CallToolResult::error(vec![Content::text(format!(
+                    "Failed: {}",
+                    e
+                ))]))
+            }
         }
     }
 }

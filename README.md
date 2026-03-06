@@ -47,7 +47,7 @@ nix build .#zellij-mcp-server-static
 nix build .#zellij-mcp-server
 ```
 
-或使用 Release 中发布的二进制（Coming Soon!）
+或使用 Release 中发布的[二进制](https://github.com/qrzbing/zellij-mcp-server/releases)
 
 ## 使用方法
 
@@ -75,6 +75,7 @@ Options:
 
 ## TODOs
 
+- [ ] 更详细的 Status 信息
 - [ ] 实现更多 MCP 工具 [#1](https://github.com/qrzbing/zellij-mcp-server/issues/1)
 - [x] 添加 Nix 发布
 - [x] 添加 GitHub Action

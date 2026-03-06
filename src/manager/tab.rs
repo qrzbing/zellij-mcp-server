@@ -1,13 +1,25 @@
 use std::str::FromStr;
 
-use anyhow::Result;
+use anyhow::{Result, bail};
 use kdl::KdlDocument;
 use tracing::{debug, warn};
-use zellij_utils::cli::CliAction;
+use zellij_utils::{cli::CliAction, data::ClientId};
 
 use super::ZellijSessionManager;
 
 impl ZellijSessionManager {
+    fn tab_position_from_names(tabs: &[String], tab_name: &str) -> Option<usize> {
+        tabs.iter()
+            .position(|name| name == tab_name)
+            .map(|idx| idx + 1) // zellij tab positions are 1-based
+    }
+
+    pub(crate) fn preferred_tab_position(&self) -> Option<usize> {
+        let current = self.current_tab_name.as_deref()?;
+        let tabs = self.list_tabs().ok()?;
+        Self::tab_position_from_names(&tabs, current)
+    }
+
     pub fn new_tab(&mut self, name: Option<String>) -> Result<Option<String>> {
         self.send_action(
             CliAction::NewTab {
@@ -69,37 +81,26 @@ impl ZellijSessionManager {
         Ok(None)
     }
 
-    fn extract_connected_clients_kdl(layout: &str) -> Result<Option<usize>> {
-        let document = KdlDocument::from_str(layout)
-            .map_err(|e| anyhow::anyhow!("Failed to parse KDL layout: {}", e))?;
+    fn extract_client_ids_from_list_clients(output: &str) -> Vec<ClientId> {
+        output
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+            .filter_map(|line| line.split_whitespace().next())
+            .filter_map(|client_id| client_id.parse::<ClientId>().ok())
+            .collect()
+    }
 
-        let Some(node) = document.get("connected_clients") else {
-            return Ok(None);
-        };
-
-        let count = node
-            .entries()
-            .iter()
-            .find_map(|entry| entry.value().as_i64())
-            .and_then(|v| usize::try_from(v).ok());
-
-        Ok(count)
+    fn list_client_ids(&self) -> Result<Vec<ClientId>> {
+        let clients_str = self.send_action(CliAction::ListClients, None)?;
+        Ok(Self::extract_client_ids_from_list_clients(&clients_str))
     }
 
     pub(crate) fn has_active_ui_clients(&self) -> bool {
-        let layout = match self.send_action(CliAction::DumpLayout, None) {
-            Ok(layout) => layout,
+        match self.list_client_ids() {
+            Ok(client_ids) => !client_ids.is_empty(),
             Err(e) => {
-                warn!("Failed to detect connected clients from DumpLayout: {}", e);
-                return false;
-            }
-        };
-
-        match Self::extract_connected_clients_kdl(&layout) {
-            Ok(Some(count)) => count > 0,
-            Ok(None) => false,
-            Err(e) => {
-                warn!("Failed to parse connected_clients from DumpLayout: {}", e);
+                warn!("Failed to detect connected clients from ListClients: {}", e);
                 false
             }
         }
@@ -120,27 +121,49 @@ impl ZellijSessionManager {
         let layout = self.send_action(CliAction::DumpLayout, None)?;
         let tab_name = Self::extract_focused_tab_kdl(&layout)?;
 
-        // Update cache
-        self.current_tab_name = tab_name.clone();
+        // In headless mode, DumpLayout can omit focused tab. Keep the previous
+        // cached hint so subsequent UI-client attach can still target the tab.
+        if let Some(name) = tab_name {
+            self.current_tab_name = Some(name);
+        }
 
         debug!("Refreshed current tab: {:?}", self.current_tab_name);
 
-        Ok(tab_name)
+        Ok(self.current_tab_name.clone())
     }
 
     pub fn switch_to_tab(&mut self, tab_name: String) -> Result<()> {
+        let tabs = self.list_tabs()?;
+        if !tabs.iter().any(|name| name == &tab_name) {
+            bail!(
+                "Tab '{}' not found. Available tabs: {}",
+                tab_name,
+                tabs.join(", ")
+            );
+        }
+
         let switch_action = CliAction::GoToTabName {
             name: tab_name.clone(),
             create: false,
         };
         if self.has_active_ui_clients() {
             self.send_action(switch_action, None)?;
+            let current = self.refresh_current_tab()?;
+            if current.as_deref() != Some(tab_name.as_str()) {
+                let current = current.unwrap_or_else(|| "<none>".to_string());
+                bail!(
+                    "Switch command was sent, but focused tab is '{}' instead of '{}'",
+                    current,
+                    tab_name
+                );
+            }
         } else {
-            self.send_action_as_ui_client(switch_action, None)?;
+            // In headless mode there is no persistent active client; keep an internal tab hint
+            // so subsequent write/dump operations can focus this tab on attach.
+            let tab_position_to_focus = Self::tab_position_from_names(&tabs, &tab_name);
+            self.send_action_as_ui_client(switch_action, None, tab_position_to_focus)?;
+            self.current_tab_name = Some(tab_name.clone());
         }
-
-        // Update cache
-        self.current_tab_name = Some(tab_name.clone());
 
         debug!("Switched to tab: {}", tab_name);
 
@@ -175,5 +198,32 @@ impl ZellijSessionManager {
         );
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ZellijSessionManager;
+
+    #[test]
+    fn extract_client_ids_from_list_clients_parses_data_rows() {
+        let output = "\
+CLIENT_ID ZELLIJ_PANE_ID RUNNING_COMMAND
+1         terminal_4     zsh
+12        plugin_7       zellij:tab-bar
+";
+
+        let client_ids = ZellijSessionManager::extract_client_ids_from_list_clients(output);
+
+        assert_eq!(client_ids, vec![1, 12]);
+    }
+
+    #[test]
+    fn extract_client_ids_from_list_clients_handles_header_only() {
+        let output = "CLIENT_ID ZELLIJ_PANE_ID RUNNING_COMMAND";
+
+        let client_ids = ZellijSessionManager::extract_client_ids_from_list_clients(output);
+
+        assert!(client_ids.is_empty());
     }
 }

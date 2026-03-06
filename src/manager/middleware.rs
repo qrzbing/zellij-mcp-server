@@ -25,7 +25,9 @@ enum ActionReplyMode {
 impl ZellijSessionManager {
     fn reply_mode_for(cli_action: &CliAction) -> ActionReplyMode {
         match cli_action {
-            CliAction::QueryTabNames | CliAction::DumpLayout => ActionReplyMode::LogOnly,
+            CliAction::QueryTabNames | CliAction::DumpLayout | CliAction::ListClients => {
+                ActionReplyMode::LogOnly
+            }
             _ => ActionReplyMode::UnblockOrLog,
         }
     }
@@ -216,6 +218,7 @@ impl ZellijSessionManager {
         &self,
         cli_action: CliAction,
         terminal_id: Option<u32>,
+        tab_position_to_focus: Option<usize>,
     ) -> Result<String> {
         let (mut sender, mut receiver) = self.connect()?;
         let reply_mode = Self::reply_mode_for(&cli_action);
@@ -234,7 +237,7 @@ impl ZellijSessionManager {
                     },
                     Config::default(),
                     Options::default(),
-                    None,  // tab_position_to_focus: 跟随当前激活 tab
+                    tab_position_to_focus,
                     None,  // pane_id_to_focus
                     false, // is_web_client
                 ))

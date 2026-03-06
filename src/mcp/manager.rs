@@ -37,7 +37,14 @@ impl SessionManager {
         }
 
         let socket_path = self.socket_dir.join(&session_name);
+        if !socket_path.exists() {
+            anyhow::bail!("Session '{}' not found", session_name);
+        }
+
         let manager = ZellijSessionManager::new(session_name.clone(), socket_path)?;
+        if !manager.is_alive() {
+            anyhow::bail!("Session '{}' is not running", session_name);
+        }
 
         instances.insert(session_name.clone(), manager);
         drop(instances);
@@ -104,10 +111,9 @@ impl SessionManager {
         current.clone()
     }
 
-    /// Resolve session: use provided name or fall back to current session
-    pub fn resolve_session(&self, name_opt: Option<String>) -> Result<ZellijSessionManager> {
-        let name = match name_opt {
-            Some(n) => n,
+    fn resolve_name(&self, name_opt: Option<String>) -> Result<String> {
+        match name_opt {
+            Some(n) => Ok(n),
             None => {
                 let current = self.current_session.lock().unwrap();
                 current.as_ref().cloned().ok_or_else(|| {
@@ -115,21 +121,33 @@ impl SessionManager {
                         "No session name provided and no current session is set. \
                          Use 'attach_session' to attach to a session first."
                     )
-                })?
+                })
             }
-        };
-
-        let instances = self.instances.lock().unwrap();
-        instances
-            .get(&name)
-            .cloned()
-            .ok_or_else(|| anyhow::anyhow!("Session '{}' not attached", name))
+        }
     }
 
-    /// Resolve mutable session (returns clone since ZellijSessionManager uses socket)
-    pub fn resolve_session_mut(&self, name_opt: Option<String>) -> Result<ZellijSessionManager> {
-        // ZellijSessionManager communicates via socket, so clone is fine
-        self.resolve_session(name_opt)
+    pub fn with_session<T, F>(&self, name_opt: Option<String>, f: F) -> Result<T>
+    where
+        F: FnOnce(&ZellijSessionManager) -> Result<T>,
+    {
+        let name = self.resolve_name(name_opt)?;
+        let instances = self.instances.lock().unwrap();
+        let mgr = instances
+            .get(&name)
+            .ok_or_else(|| anyhow::anyhow!("Session '{}' not attached", name))?;
+        f(mgr)
+    }
+
+    pub fn with_session_mut<T, F>(&self, name_opt: Option<String>, f: F) -> Result<T>
+    where
+        F: FnOnce(&mut ZellijSessionManager) -> Result<T>,
+    {
+        let name = self.resolve_name(name_opt)?;
+        let mut instances = self.instances.lock().unwrap();
+        let mgr = instances
+            .get_mut(&name)
+            .ok_or_else(|| anyhow::anyhow!("Session '{}' not attached", name))?;
+        f(mgr)
     }
 
     // Set log directory for a session, modifying the stored instance directly

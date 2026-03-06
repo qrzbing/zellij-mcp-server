@@ -189,27 +189,26 @@ impl ZellijMcpServer {
         &self,
         Parameters(req): Parameters<RenameSessionRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        match self.manager.resolve_session(req.session_name.clone()) {
-            Ok(mgr) => match mgr.rename_session(req.new_name.clone()) {
-                Ok(_) => {
-                    tracing::info!("Renamed to '{}'", req.new_name);
-                    Ok(CallToolResult::success(vec![Content::text(format!(
-                        "Renamed to '{}'",
-                        req.new_name
-                    ))]))
-                }
-                Err(e) => {
-                    tracing::error!("Failed to rename: {}", e);
-                    Ok(CallToolResult::error(vec![Content::text(format!(
-                        "Failed: {}",
-                        e
-                    ))]))
-                }
-            },
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(format!(
-                "Failed to resolve: {}",
-                e
-            ))])),
+        let new_name = req.new_name.clone();
+        match self
+            .manager
+            .with_session(req.session_name.clone(), move |mgr| {
+                mgr.rename_session(new_name)
+            }) {
+            Ok(_) => {
+                tracing::info!("Renamed to '{}'", req.new_name);
+                Ok(CallToolResult::success(vec![Content::text(format!(
+                    "Renamed to '{}'",
+                    req.new_name
+                ))]))
+            }
+            Err(e) => {
+                tracing::error!("Failed to rename: {}", e);
+                Ok(CallToolResult::error(vec![Content::text(format!(
+                    "Failed: {}",
+                    e
+                ))]))
+            }
         }
     }
 }

@@ -1,7 +1,6 @@
 use std::path::PathBuf;
 
-use anyhow::Context;
-use tracing::debug;
+use tracing::{debug, warn};
 
 mod middleware;
 pub mod readwrite;
@@ -42,12 +41,12 @@ impl ZellijSessionManager {
             last_dump_message: None,
         };
 
-        mgr.refresh_current_tab().with_context(|| {
-            format!(
-                "Failed to initialize tab information for session '{}'",
-                session_name
-            )
-        })?;
+        if let Err(e) = mgr.refresh_current_tab() {
+            warn!(
+                "Failed to initialize tab information for session '{}': {}",
+                session_name, e
+            );
+        }
 
         debug!("Current panel: {:?}", mgr.current_tab_name());
 

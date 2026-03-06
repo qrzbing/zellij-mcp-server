@@ -159,12 +159,14 @@ impl ZellijSessionManager {
 
     /// Write text directly to the pane (no escape sequence processing)
     pub fn write_to_pane(&self, text: String) -> anyhow::Result<()> {
-        self.send_action(
-            CliAction::WriteChars {
-                chars: text.clone(),
-            },
-            None,
-        )?;
+        let action = CliAction::WriteChars {
+            chars: text.clone(),
+        };
+        if self.has_active_ui_clients() {
+            self.send_action(action, None)?;
+        } else {
+            self.send_action_as_ui_client(action, None, self.preferred_tab_position())?;
+        }
 
         debug!("Wrote to pane: {:?}", text);
 
@@ -172,12 +174,14 @@ impl ZellijSessionManager {
     }
 
     pub fn send_bytes(&self, bytes: Vec<u8>) -> anyhow::Result<()> {
-        self.send_action(
-            CliAction::Write {
-                bytes: bytes.clone(),
-            },
-            None,
-        )?;
+        let action = CliAction::Write {
+            bytes: bytes.clone(),
+        };
+        if self.has_active_ui_clients() {
+            self.send_action(action, None)?;
+        } else {
+            self.send_action_as_ui_client(action, None, self.preferred_tab_position())?;
+        }
         debug!("Sent bytes to pane: {:?}", bytes);
         Ok(())
     }
@@ -215,7 +219,7 @@ impl ZellijSessionManager {
             self.send_action(dump_action, None)
                 .with_context(err_context)?;
         } else {
-            self.send_action_as_ui_client(dump_action, None)
+            self.send_action_as_ui_client(dump_action, None, self.preferred_tab_position())
                 .with_context(err_context)?;
         }
 

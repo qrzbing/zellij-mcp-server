@@ -83,29 +83,24 @@ impl ZellijMcpServer {
         &self,
         Parameters(req): Parameters<WriteRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        match self.manager.resolve_session(req.session_name.clone()) {
-            Ok(mut mgr) => {
-                // Use Manager's high-level API (automatically processes escape sequences)
-                match mgr.write_text(&req.text, req.add_newline) {
-                    Ok(content) => {
-                        let action = if req.add_newline { "command" } else { "text" };
-                        let msg = format!("Sent {} to current tab\n{}", action, content);
-                        tracing::info!("{}", msg);
-                        Ok(CallToolResult::success(vec![Content::text(msg)]))
-                    }
-                    Err(e) => {
-                        tracing::error!("Failed to write: {}", e);
-                        Ok(CallToolResult::error(vec![Content::text(format!(
-                            "Failed to write: {}",
-                            e
-                        ))]))
-                    }
-                }
+        match self
+            .manager
+            .with_session_mut(req.session_name.clone(), |mgr| {
+                mgr.write_text(&req.text, req.add_newline)
+            }) {
+            Ok(content) => {
+                let action = if req.add_newline { "command" } else { "text" };
+                let msg = format!("Sent {} to current tab\n{}", action, content);
+                tracing::info!("{}", msg);
+                Ok(CallToolResult::success(vec![Content::text(msg)]))
             }
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(format!(
-                "Failed to resolve session: {}",
-                e
-            ))])),
+            Err(e) => {
+                tracing::error!("Failed to write: {}", e);
+                Ok(CallToolResult::error(vec![Content::text(format!(
+                    "Failed to write: {}",
+                    e
+                ))]))
+            }
         }
     }
 
@@ -115,28 +110,23 @@ impl ZellijMcpServer {
         &self,
         Parameters(req): Parameters<WriteMultipleRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        match self.manager.resolve_session(req.session_name.clone()) {
-            Ok(mut mgr) => {
-                // Use Manager's high-level API
-                match mgr.write_multiple(&req.commands) {
-                    Ok(content) => {
-                        let msg = format!("Sent {} commands\n{}", req.commands.len(), content);
-                        tracing::info!("{}", msg);
-                        Ok(CallToolResult::success(vec![Content::text(msg)]))
-                    }
-                    Err(e) => {
-                        tracing::error!("Failed to write commands: {}", e);
-                        Ok(CallToolResult::error(vec![Content::text(format!(
-                            "Failed: {}",
-                            e
-                        ))]))
-                    }
-                }
+        match self
+            .manager
+            .with_session_mut(req.session_name.clone(), |mgr| {
+                mgr.write_multiple(&req.commands)
+            }) {
+            Ok(content) => {
+                let msg = format!("Sent {} commands\n{}", req.commands.len(), content);
+                tracing::info!("{}", msg);
+                Ok(CallToolResult::success(vec![Content::text(msg)]))
             }
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(format!(
-                "Failed to resolve session: {}",
-                e
-            ))])),
+            Err(e) => {
+                tracing::error!("Failed to write commands: {}", e);
+                Ok(CallToolResult::error(vec![Content::text(format!(
+                    "Failed: {}",
+                    e
+                ))]))
+            }
         }
     }
 
@@ -146,28 +136,21 @@ impl ZellijMcpServer {
         &self,
         Parameters(req): Parameters<SendKeyRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        match self.manager.resolve_session(req.session_name.clone()) {
-            Ok(mgr) => {
-                // Use Manager's high-level API (automatically parses key string)
-                match mgr.send_key_string(&req.key) {
-                    Ok(key_name) => {
-                        let msg = format!("Sent key: {}", key_name);
-                        tracing::info!("{}", msg);
-                        Ok(CallToolResult::success(vec![Content::text(msg)]))
-                    }
-                    Err(e) => {
-                        tracing::error!("Failed to send key '{}': {}", req.key, e);
-                        Ok(CallToolResult::error(vec![Content::text(format!(
-                            "Failed to parse or send key: {}",
-                            e
-                        ))]))
-                    }
-                }
+        match self.manager.with_session(req.session_name.clone(), |mgr| {
+            mgr.send_key_string(&req.key)
+        }) {
+            Ok(key_name) => {
+                let msg = format!("Sent key: {}", key_name);
+                tracing::info!("{}", msg);
+                Ok(CallToolResult::success(vec![Content::text(msg)]))
             }
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(format!(
-                "Failed to resolve session: {}",
-                e
-            ))])),
+            Err(e) => {
+                tracing::error!("Failed to send key '{}': {}", req.key, e);
+                Ok(CallToolResult::error(vec![Content::text(format!(
+                    "Failed to parse or send key: {}",
+                    e
+                ))]))
+            }
         }
     }
 
@@ -182,32 +165,26 @@ impl ZellijMcpServer {
         &self,
         Parameters(req): Parameters<DumpScreenRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        match self.manager.resolve_session(req.session_name.clone()) {
-            Ok(mgr) => {
-                let range = match (req.lines, req.begin, req.end) {
-                    (Some(n), _, _) => DumpRange::Last(n),
-                    (_, Some(b), Some(e)) => DumpRange::Range { begin: b, end: e },
-                    _ => DumpRange::Viewport,
-                };
-                // Use Manager's API
-                match mgr.dump_screen(&range) {
-                    Ok((content, _)) => {
-                        tracing::info!("Screen dumped");
-                        Ok(CallToolResult::success(vec![Content::text(content)]))
-                    }
-                    Err(e) => {
-                        tracing::error!("Failed to dump screen: {}", e);
-                        Ok(CallToolResult::error(vec![Content::text(format!(
-                            "Failed: {}",
-                            e
-                        ))]))
-                    }
-                }
+        let range = match (req.lines, req.begin, req.end) {
+            (Some(n), _, _) => DumpRange::Last(n),
+            (_, Some(b), Some(e)) => DumpRange::Range { begin: b, end: e },
+            _ => DumpRange::Viewport,
+        };
+        match self
+            .manager
+            .with_session(req.session_name.clone(), |mgr| mgr.dump_screen(&range))
+        {
+            Ok((content, _)) => {
+                tracing::info!("Screen dumped");
+                Ok(CallToolResult::success(vec![Content::text(content)]))
             }
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(format!(
-                "Failed to resolve session: {}",
-                e
-            ))])),
+            Err(e) => {
+                tracing::error!("Failed to dump screen: {}", e);
+                Ok(CallToolResult::error(vec![Content::text(format!(
+                    "Failed: {}",
+                    e
+                ))]))
+            }
         }
     }
 
