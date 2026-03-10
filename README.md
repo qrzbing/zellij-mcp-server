@@ -1,55 +1,92 @@
-# Rust 编写的 Zellij MCP 服务
+# Zellij MCP Service Written in Rust
 
-本项目用于学习 vibe coding。
+This project is for learning vibe coding.
+
+English | [中文](./README.zh_CN.md)
+
+English version is translated by LLM.
 
 ---
 
-## 实现想法
+## Implementation Ideas
 
-目前已经有了一些 Zellij MCP Server，例如
+There are already some Zellij MCP Servers, for example:
 
 - [GitJuhb/zellij-mcp-server](https://github.com/GitJuhb/zellij-mcp-server)
 - [suprposition/zellij-mcp-server](https://pypi.org/project/zellij-mcp-server/)
 - [theslyprofessor/zellij-pane-tracker](https://github.com/theslyprofessor/zellij-pane-tracker)
 
-其中 GitJuhb/zellij-mcp-server 实现得相当全面。但在具体使用时，我意识到我有一些需求：
+Among them, GitJuhb/zellij-mcp-server is implemented quite comprehensively. But during actual use, I realized I had some needs:
 
-1. 不必拆分面板，用 tab 保存工作流。如果使用 panel 拆分的话经常会在一个 tab 中拆出一堆 panel，如果屏幕太小的话会干扰到读取的内容信息；
-2. 大部分 MCP 都是 Typescript/Python 编写的，很难在嵌入式设备上使用。用 Rust 编写生成的运行时很小，而且 Zellij 本身是用 Rust 编写的，适合直接调 Zellij 的包；
-3. 我需要同时支持 stdio/http 请求；
+1. No need to split panes; use tabs to preserve workflows. If pane splitting is used, it is common to split a lot of panes inside one tab, and if the screen is too small, it interferes with reading content information;
+2. Most MCP implementations are written in Typescript/Python, making them hard to use on embedded devices. A runtime generated from Rust is very small, and Zellij itself is written in Rust, so it is suitable to call Zellij packages directly;
+3. I need to support both stdio/http requests at the same time;
 
-在使用了一阵子 GitJuhb/zellij-mcp-server 后，我选择了自己编写代码。目前的功能仍不算完善，我借助了一些世界之外（Vibe Coding）的力量来为我阅读 [Zellij](https://github.com/zellij-org/zellij) 和 [rust-sdk](https://github.com/modelcontextprotocol/rust-sdk) 的源码，因此很多内容可能不是最佳实践。欢迎提出建议和意见！
+After using GitJuhb/zellij-mcp-server for a while, I chose to write my own code. The current functionality is still not perfect. I borrowed some power from outside the world (Vibe Coding) to help me read the source code of [Zellij](https://github.com/zellij-org/zellij) and [rust-sdk](https://github.com/modelcontextprotocol/rust-sdk), so much of the content may not be best practice. Suggestions and feedback are welcome!
 
-## 编译运行
+## Build and Run
 
-动态链接
+Dynamic linking:
 
 ```sh
 just build
 ```
 
-静态链接
+Static linking:
 
 ```sh
 just build-static
 ```
 
-Nix 构建（动态/静态）
+Build with Nix (dynamic/static):
 
 ```sh
-# 动态链接（glibc）
+# Dynamic linking (glibc)
 nix build .#zellij-mcp-server-dynamic
 
-# 静态链接（musl）
+# Static linking (musl)
 nix build .#zellij-mcp-server-static
 
-# 默认包（当前为动态链接）
+# Default package (currently dynamic linking)
 nix build .#zellij-mcp-server
 ```
 
-或使用 Release 中发布的[二进制](https://github.com/qrzbing/zellij-mcp-server/releases)
+System service invocation (managed through home manager):
 
-## 使用方法
+```nix
+{
+  pkgs,
+  ...
+}:
+{
+  home.packages = with pkgs; [
+    zellij-mcp-server
+  ];
+
+  systemd.user.services = {
+    zellij = {
+      Unit = {
+        Description = "Zellij MCP Service (User Level)";
+      };
+
+      Service = {
+        Type = "simple";
+        ExecStart = "${pkgs.zellij-mcp-server}/bin/zellij-mcp-server run";
+        Restart = "on-failure";
+        RestartSec = 5;
+      };
+
+      Install = {
+        WantedBy = [ "default.target" ];
+      };
+    };
+  };
+}
+```
+
+Or use the [binary](https://github.com/qrzbing/zellij-mcp-server/releases) published in Release.
+
+## Usage
 
 ```
 $ zellij-mcp-server --help
@@ -67,24 +104,24 @@ Options:
   -V, --version  Print version
 ```
 
-目前包含两个功能：
+It currently contains two features:
 
-- MCP 服务：运行在 <http://127.0.0.1:3000>，更详细的用法见 [MCP 使用文档](./docs/mcp-command.md)
-- CLI 服务：用于调试实现的各类功能，更详细的用法见 [CLI 使用文档](./docs/cli-command.md)
-- 项目文档入口：见 [Documentation](./docs/README.md)
+- MCP service: runs on <http://127.0.0.1:3000>. For more detailed usage, see [MCP Usage Documentation](./docs/mcp-command.md)
+- CLI service: used to debug various implemented features. For more detailed usage, see [CLI Usage Documentation](./docs/cli-command.md)
+- Project documentation entry: see [Documentation](./docs/README.md)
 
 ## TODOs
 
-- [ ] 更详细的 Status 信息
-- [ ] 实现更多 MCP 工具 [#1](https://github.com/qrzbing/zellij-mcp-server/issues/1)
-- [x] 添加 Nix 发布
-- [x] 添加 GitHub Action
+- [ ] More detailed status information
+- [ ] Implement more MCP tools [#1](https://github.com/qrzbing/zellij-mcp-server/issues/1)
+- [x] Add Nix release
+- [x] Add GitHub Action
 
 ---
 
-本项目实现依赖 [zellij-utils](https://crates.io/crates/zellij-utils) 版本，计划为：
+This project implementation depends on the [zellij-utils](https://crates.io/crates/zellij-utils) version, with the plan as follows:
 
-- 0.x.x：与 zellij 0.43.x 版本兼容
-  - 0.1.x：与 zellij 0.43.1 版本兼容
-  - 0.2.x：与 zellij 0.43.2 版本兼容
-- 1.x.x：与 zellij 0.44.x 版本兼容
+- 0.x.x: compatible with zellij 0.43.x
+  - 0.1.x: compatible with zellij 0.43.1
+  - 0.2.x: compatible with zellij 0.43.2
+- 1.x.x: compatible with zellij 0.44.x
