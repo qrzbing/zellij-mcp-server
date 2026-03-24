@@ -82,11 +82,25 @@ fn main() {
     let cli = cli::Cli::parse();
 
     let socket_path = cli.command.socket_path();
-    let zellij_path = cli.command.zellij_path();
-    // if !zellij_path.exists() {
-    //     eprintln!("Zellij does not exist at {}", zellij_path.display());
-    //     std::process::exit(1);
-    // }
+    let requested_zellij_path = cli.command.raw_zellij_path();
+    let zellij_path = match cli.command.checked_zellij_path() {
+        Some(path) => path,
+        None => {
+            if requested_zellij_path.is_absolute() || requested_zellij_path.components().count() > 1
+            {
+                eprintln!(
+                    "Zellij does not exist at {}",
+                    requested_zellij_path.display()
+                );
+            } else {
+                eprintln!(
+                    "Zellij executable '{}' was not found in PATH",
+                    requested_zellij_path.display()
+                );
+            }
+            std::process::exit(1);
+        }
+    };
 
     match cli.command {
         cli::McpOptions::Run {
