@@ -5,6 +5,21 @@ use crate::{interactive::context::CliContext, manager::ZellijSessionManager};
 use super::CommandExecutor;
 
 impl CommandExecutor {
+    pub(super) fn new_session(
+        session_name: String,
+        context: &mut CliContext,
+    ) -> anyhow::Result<()> {
+        let created = context.new_session(session_name.clone())?;
+        let action = if created {
+            "Created and attached to session:"
+        } else {
+            "Attached to existing session:"
+        };
+
+        println!("{} {}", action.green(), session_name.bold());
+        Ok(())
+    }
+
     pub(super) fn attach_session(
         session_name: String,
         context: &mut CliContext,

@@ -17,6 +17,12 @@ pub struct AttachSessionRequest {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+pub struct NewSessionRequest {
+    /// Session name to create
+    pub session_name: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
 pub struct DetachSessionRequest {
     /// Session name to detach from (uses current if not provided)
     pub session_name: Option<String>,
@@ -40,6 +46,34 @@ pub struct RenameSessionRequest {
 
 #[tool_router(router = session_tools)]
 impl ZellijMcpServer {
+    /// Create a detached Zellij session by name, then attach to it
+    #[tool]
+    async fn new_session(
+        &self,
+        Parameters(req): Parameters<NewSessionRequest>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        let _op_guard = self.op_lock.lock().await;
+        match self.manager.new_session(req.session_name.clone()) {
+            Ok(created) => {
+                let message = if created {
+                    format!("Created and attached to session '{}'", req.session_name)
+                } else {
+                    format!("Attached to existing session '{}'", req.session_name)
+                };
+
+                tracing::info!("{}", message);
+                Ok(CallToolResult::success(vec![Content::text(message)]))
+            }
+            Err(e) => {
+                tracing::error!("Failed to create session: {}", e);
+                Ok(CallToolResult::error(vec![Content::text(format!(
+                    "Failed: {}",
+                    e
+                ))]))
+            }
+        }
+    }
+
     /// Attach to a Zellij session by name
     #[tool]
     async fn attach_session(

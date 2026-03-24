@@ -82,10 +82,6 @@ fn main() {
     let cli = cli::Cli::parse();
 
     let socket_path = cli.command.socket_path();
-    if !socket_path.exists() {
-        eprintln!("Socket does not exist at {}", socket_path.display());
-        std::process::exit(1);
-    }
     let zellij_path = cli.command.zellij_path();
     // if !zellij_path.exists() {
     //     eprintln!("Zellij does not exist at {}", zellij_path.display());

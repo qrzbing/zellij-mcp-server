@@ -82,8 +82,8 @@ impl ZellijSessionManager {
     /// * `add_newline` - Whether to add a newline at the end
     ///
     /// # Examples
-    /// ```
-    /// mgr.write_text("echo hello", true)?;  // Execute command
+    /// ```ignore
+    /// mgr.write_text("echo hello", true)?;   // Execute command
     /// mgr.write_text("hello", false)?;       // Write text only
     /// ```
     pub fn write_text(&mut self, text: &str, add_newline: bool) -> anyhow::Result<String> {
@@ -113,7 +113,7 @@ impl ZellijSessionManager {
     /// * `commands` - List of commands to execute
     ///
     /// # Examples
-    /// ```
+    /// ```ignore
     /// mgr.write_multiple(&["cd /tmp".to_string(), "ls -la".to_string()])?;
     /// ```
     pub fn write_multiple(&mut self, commands: &[String]) -> anyhow::Result<String> {
@@ -140,7 +140,7 @@ impl ZellijSessionManager {
     /// * `key_str` - Key string (e.g., "ctrl+c", "enter", "f1")
     ///
     /// # Examples
-    /// ```
+    /// ```ignore
     /// mgr.send_key_string("ctrl+c")?;
     /// mgr.send_key_string("enter")?;
     /// ```

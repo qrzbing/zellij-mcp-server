@@ -105,6 +105,13 @@ pub enum ReplCommand {
         name: Option<String>,
     },
 
+    /// Create a new detached zellij session and attach to it
+    #[command(alias = "ns", name = "new-session")]
+    NewSession {
+        /// Session name to create
+        session_name: String,
+    },
+
     /// Switch to a specific tab
     #[command(alias = "s")]
     Switch {
@@ -211,6 +218,10 @@ impl CommandExecutor {
             }
             ReplCommand::NewTab { name } => {
                 Self::new_tab(context, name.clone())?;
+                Ok(false)
+            }
+            ReplCommand::NewSession { session_name } => {
+                Self::new_session(session_name, context)?;
                 Ok(false)
             }
             ReplCommand::Rename { target } => {

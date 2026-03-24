@@ -24,7 +24,8 @@ pub struct ZellijMcpServer {
 
 impl ZellijMcpServer {
     pub fn new(config: ZellijConfig) -> Self {
-        let manager = SessionManager::new(config.resolve_socket_path().clone());
+        let manager =
+            SessionManager::new(config.resolve_socket_path(), config.resolve_zellij_path());
 
         // Combine all tool routers
         let tool_router = ToolRouter::new()

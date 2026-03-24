@@ -34,6 +34,16 @@ impl<'a> CliContext<'a> {
         Ok(())
     }
 
+    pub fn new_session(&mut self, session_name: String) -> anyhow::Result<bool> {
+        let created = ZellijSessionManager::create_background_session(
+            self.zellij_path,
+            self.socket_dir,
+            &session_name,
+        )?;
+        self.attach(session_name)?;
+        Ok(created)
+    }
+
     pub fn detach(&mut self) {
         self.manager = None;
     }

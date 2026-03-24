@@ -17,14 +17,16 @@ pub struct SessionManager {
     instances: Arc<Mutex<HashMap<String, ZellijSessionManager>>>,
     current_session: Arc<Mutex<Option<String>>>,
     socket_dir: PathBuf,
+    zellij_path: PathBuf,
 }
 
 impl SessionManager {
-    pub fn new(socket_dir: PathBuf) -> Self {
+    pub fn new(socket_dir: PathBuf, zellij_path: PathBuf) -> Self {
         Self {
             instances: Arc::new(Mutex::new(HashMap::new())),
             current_session: Arc::new(Mutex::new(None)),
             socket_dir,
+            zellij_path,
         }
     }
 
@@ -53,6 +55,27 @@ impl SessionManager {
         self.set_current_session(Some(session_name))?;
 
         Ok(())
+    }
+
+    /// Create a detached session if missing, then attach to it.
+    pub fn new_session(&self, session_name: String) -> Result<bool> {
+        let created = ZellijSessionManager::create_background_session(
+            &self.zellij_path,
+            &self.socket_dir,
+            &session_name,
+        )?;
+
+        {
+            let instances = self.instances.lock().unwrap();
+            if instances.contains_key(&session_name) {
+                drop(instances);
+                self.set_current_session(Some(session_name))?;
+                return Ok(created);
+            }
+        }
+
+        self.attach(session_name)?;
+        Ok(created)
     }
 
     /// Detach from a Zellij session
