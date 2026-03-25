@@ -23,10 +23,17 @@ impl ZellijSessionManager {
     pub fn new_tab(&mut self, name: Option<String>) -> Result<Option<String>> {
         self.send_action(
             CliAction::NewTab {
-                name: name.clone(),
-                cwd: None,
                 layout: None,
                 layout_dir: None,
+                name: name.clone(),
+                cwd: None,
+                initial_command: Vec::new(),
+                initial_plugin: None,
+                close_on_exit: false,
+                start_suspended: false,
+                block_until_exit_success: false,
+                block_until_exit_failure: false,
+                block_until_exit: false,
             },
             None,
         )?;
@@ -39,7 +46,7 @@ impl ZellijSessionManager {
     }
 
     pub fn close_tab(&mut self) -> Result<()> {
-        self.send_action(CliAction::CloseTab, None)?;
+        self.send_action(CliAction::CloseTab { tab_id: None }, None)?;
 
         debug!("Closed current tab");
 
@@ -175,6 +182,7 @@ impl ZellijSessionManager {
         self.send_action(
             CliAction::RenameTab {
                 name: new_name.clone(),
+                tab_id: None,
             },
             None,
         )?;
@@ -188,7 +196,7 @@ impl ZellijSessionManager {
 
     /// Undo tab rename (restore to default name like "Tab #1")
     pub fn undo_rename_tab(&mut self) -> Result<()> {
-        self.send_action(CliAction::UndoRenameTab, None)?;
+        self.send_action(CliAction::UndoRenameTab { tab_id: None }, None)?;
 
         self.refresh_current_tab()?;
 

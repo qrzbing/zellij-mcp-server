@@ -121,5 +121,5 @@ Options:
 
 - 0.x.x：与 zellij 0.43.x 版本兼容
   - 0.1.x：与 zellij 0.43.1 版本兼容
-  - 0.2.x：与 zellij 0.43.2 版本兼容
 - 1.x.x：与 zellij 0.44.x 版本兼容
+  - 1.0.x：与 zellij 0.44.0 版本兼容

@@ -7,7 +7,7 @@
 
 rustPlatform.buildRustPackage {
   pname   = "zellij-mcp-server";
-  version = "0.1.3";
+  version = "1.0.0";
 
   src = lib.cleanSource ./.;
 

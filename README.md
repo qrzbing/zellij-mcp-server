@@ -123,5 +123,5 @@ This project implementation depends on the [zellij-utils](https://crates.io/crat
 
 - 0.x.x: compatible with zellij 0.43.x
   - 0.1.x: compatible with zellij 0.43.1
-  - 0.2.x: compatible with zellij 0.43.2
 - 1.x.x: compatible with zellij 0.44.x
+  - 1.0.x: compatible with zellij 0.44.0

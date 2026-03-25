@@ -1,14 +1,10 @@
 use anyhow::{Context, Result};
-use interprocess::local_socket::LocalSocketStream;
 use tracing::{debug, warn};
 use zellij_utils::{
     cli::CliAction,
-    data::Style,
-    input::{actions::Action, config::Config, options::Options},
-    ipc::{
-        ClientAttributes, ClientToServerMsg, IpcReceiverWithContext, IpcSenderWithContext,
-        ServerToClientMsg,
-    },
+    consts::ipc_connect,
+    input::{actions::Action, cli_assets::CliAssets},
+    ipc::{ClientToServerMsg, IpcReceiverWithContext, IpcSenderWithContext, ServerToClientMsg},
     pane_size::Size,
 };
 
@@ -39,7 +35,7 @@ impl ZellijSessionManager {
     ) -> Result<String> {
         let mut output = String::new();
         loop {
-            match receiver.recv() {
+            match receiver.recv_server_msg() {
                 Some((ServerToClientMsg::UnblockInputThread, _)) => {
                     if mode == ActionReplyMode::UnblockOrLog {
                         debug!("{label} completed on UnblockInputThread");
@@ -49,19 +45,19 @@ impl ZellijSessionManager {
                     }
                 }
 
-                Some((ServerToClientMsg::Log(lines), _)) => {
+                Some((ServerToClientMsg::Log { lines }, _)) => {
                     let log_output = lines.join("\n");
                     debug!("{label} received log output: {}", log_output);
                     output.push_str(&log_output);
                     break;
                 }
 
-                Some((ServerToClientMsg::LogError(lines), _)) => {
+                Some((ServerToClientMsg::LogError { lines }, _)) => {
                     let error_output = lines.join("\n");
                     anyhow::bail!("{label} error: {}", error_output);
                 }
 
-                Some((ServerToClientMsg::Exit(exit_reason), _)) => {
+                Some((ServerToClientMsg::Exit { exit_reason }, _)) => {
                     use zellij_utils::ipc::ExitReason;
                     match exit_reason {
                         ExitReason::Error(e) => {
@@ -89,12 +85,12 @@ impl ZellijSessionManager {
 
     fn wait_attach_barrier(receiver: &mut IpcReceiverWithContext<ServerToClientMsg>) -> Result<()> {
         loop {
-            match receiver.recv() {
+            match receiver.recv_server_msg() {
                 Some((ServerToClientMsg::UnblockInputThread, _)) => {
                     debug!("Attach barrier completed on UnblockInputThread");
                     break;
                 }
-                Some((ServerToClientMsg::Exit(exit_reason), _)) => {
+                Some((ServerToClientMsg::Exit { exit_reason }, _)) => {
                     use zellij_utils::ipc::ExitReason;
                     match exit_reason {
                         ExitReason::Error(e) => {
@@ -133,7 +129,7 @@ impl ZellijSessionManager {
             );
         }
 
-        let stream = LocalSocketStream::connect(self.socket_path.clone()).context(format!(
+        let stream = ipc_connect(&self.socket_path).context(format!(
             "Failed to connect to session '{}' at {:?}",
             self.session_name, self.socket_path
         ))?;
@@ -150,35 +146,54 @@ impl ZellijSessionManager {
     }
 
     pub fn is_alive(&self) -> bool {
-        match self.connect() {
-            Ok((mut sender, mut receiver)) => {
-                if let Err(e) = sender.send(ClientToServerMsg::ConnStatus) {
-                    warn!("Failed to send ConnStatus: {}", e);
-                    return false;
-                }
+        let socket_path = self.socket_path.clone();
+        let session_name = self.session_name.clone();
+        let (tx, rx) = std::sync::mpsc::channel();
 
-                match receiver.recv() {
-                    Some((ServerToClientMsg::Connected, _)) => {
-                        debug!("Session '{}' is alive", self.session_name);
-                        true
-                    }
-                    Some((msg, _)) => {
-                        warn!("Unexpected response to ConnStatus: {:?}", msg);
+        std::thread::spawn(move || {
+            let alive = match ipc_connect(&socket_path) {
+                Ok(stream) => {
+                    let mut sender = IpcSenderWithContext::<ClientToServerMsg>::new(stream);
+                    if let Err(e) = sender.send_client_msg(ClientToServerMsg::ConnStatus) {
+                        warn!("Failed to send ConnStatus: {}", e);
                         false
-                    }
-                    None => {
-                        warn!("No response to ConnStatus");
-                        false
+                    } else {
+                        let mut receiver: IpcReceiverWithContext<ServerToClientMsg> =
+                            sender.get_receiver();
+                        match receiver.recv_server_msg() {
+                            Some((ServerToClientMsg::Connected, _)) => {
+                                debug!("Session '{}' is alive", session_name);
+                                true
+                            }
+                            Some((msg, _)) => {
+                                warn!("Unexpected response to ConnStatus: {:?}", msg);
+                                false
+                            }
+                            None => {
+                                warn!("No response to ConnStatus");
+                                false
+                            }
+                        }
                     }
                 }
-            }
-            Err(e) => {
-                debug!(
-                    "Failed to connect to session '{}': {}",
-                    self.session_name, e
+                Err(e) => {
+                    debug!("Failed to connect to session '{}': {}", session_name, e);
+                    false
+                }
+            };
+            let _ = tx.send(alive);
+        });
+
+        match rx.recv_timeout(std::time::Duration::from_millis(500)) {
+            Ok(alive) => alive,
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                warn!(
+                    "Timed out waiting for ConnStatus response from session '{}'",
+                    self.session_name
                 );
                 false
             }
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => false,
         }
     }
 
@@ -196,14 +211,19 @@ impl ZellijSessionManager {
 
             for action in actions {
                 sender
-                    .send(ClientToServerMsg::Action(action, terminal_id, None))
+                    .send_client_msg(ClientToServerMsg::Action {
+                        action,
+                        terminal_id,
+                        client_id: None,
+                        is_cli_client: true,
+                    })
                     .context("Failed to send action message")?;
             }
 
             Self::wait_action_result(&mut receiver, reply_mode, "Action")
         })();
 
-        let _ = sender.send(ClientToServerMsg::ClientExited);
+        let _ = sender.send_client_msg(ClientToServerMsg::ClientExited);
 
         result
     }
@@ -222,25 +242,25 @@ impl ZellijSessionManager {
     ) -> Result<String> {
         let (mut sender, mut receiver) = self.connect()?;
         let reply_mode = Self::reply_mode_for(&cli_action);
+        let cli_assets = CliAssets {
+            terminal_window_size: Size {
+                rows: 4096,
+                cols: 4096,
+            },
+            cwd: std::env::current_dir().ok(),
+            ..Default::default()
+        };
 
         let result = (|| {
             // Step 1: 注册为 UI 客户端
             // 使用超大尺寸，确保 min_client_terminal_size() 不会影响其他已连接的真实终端
             sender
-                .send(ClientToServerMsg::AttachClient(
-                    ClientAttributes {
-                        size: Size {
-                            rows: 4096,
-                            cols: 4096,
-                        },
-                        style: Style::default(),
-                    },
-                    Config::default(),
-                    Options::default(),
+                .send_client_msg(ClientToServerMsg::AttachClient {
+                    cli_assets: cli_assets.clone(),
                     tab_position_to_focus,
-                    None,  // pane_id_to_focus
-                    false, // is_web_client
-                ))
+                    pane_to_focus: None,
+                    is_web_client: false,
+                })
                 .context("Failed to send AttachClient")?;
 
             // Step 2: attach barrier - 显式等待 attach 阶段完成，避免依赖 sleep
@@ -256,7 +276,12 @@ impl ZellijSessionManager {
 
             for action in actions {
                 sender
-                    .send(ClientToServerMsg::Action(action, terminal_id, None))
+                    .send_client_msg(ClientToServerMsg::Action {
+                        action,
+                        terminal_id,
+                        client_id: None,
+                        is_cli_client: false,
+                    })
                     .context("Failed to send action message")?;
             }
 
@@ -265,7 +290,7 @@ impl ZellijSessionManager {
         })();
 
         // Step 5: 正确退出，服务端移除我们的状态并触发 resize 恢复
-        let _ = sender.send(ClientToServerMsg::ClientExited);
+        let _ = sender.send_client_msg(ClientToServerMsg::ClientExited);
 
         result
     }

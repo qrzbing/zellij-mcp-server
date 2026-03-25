@@ -161,6 +161,7 @@ impl ZellijSessionManager {
     pub fn write_to_pane(&self, text: String) -> anyhow::Result<()> {
         let action = CliAction::WriteChars {
             chars: text.clone(),
+            pane_id: None,
         };
         if self.has_active_ui_clients() {
             self.send_action(action, None)?;
@@ -176,6 +177,7 @@ impl ZellijSessionManager {
     pub fn send_bytes(&self, bytes: Vec<u8>) -> anyhow::Result<()> {
         let action = CliAction::Write {
             bytes: bytes.clone(),
+            pane_id: None,
         };
         if self.has_active_ui_clients() {
             self.send_action(action, None)?;
@@ -212,8 +214,10 @@ impl ZellijSessionManager {
         };
 
         let dump_action = CliAction::DumpScreen {
-            path: dump_file_path.clone(),
+            path: Some(dump_file_path.clone()),
             full: true,
+            pane_id: None,
+            ansi: false,
         };
         if self.has_active_ui_clients() {
             self.send_action(dump_action, None)

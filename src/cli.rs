@@ -19,33 +19,10 @@ pub struct ZellijConfig {
 impl ZellijConfig {
     /// 获取最终的 socket 路径
     pub fn resolve_socket_path(&self) -> PathBuf {
-        // 1. 如果用户显式指定了，直接用用户的
         if let Some(ref path) = self.socket_path {
             return PathBuf::from(path);
         }
-
-        // 2. 否则，执行自动探测逻辑
-        if let Some(runtime_dir) = dirs::runtime_dir() {
-            let base_dir = runtime_dir.join("zellij");
-
-            if base_dir.exists() {
-                if let Ok(entries) = std::fs::read_dir(&base_dir) {
-                    let version_dirs: Vec<PathBuf> = entries
-                        .filter_map(|e| e.ok())
-                        .map(|e| e.path())
-                        .filter(|p| p.is_dir())
-                        .collect();
-
-                    if let Some(first_version) = version_dirs.first() {
-                        return first_version.clone();
-                    }
-                }
-                return base_dir;
-            }
-            base_dir
-        } else {
-            PathBuf::from("/tmp/zellij")
-        }
+        zellij_utils::consts::ZELLIJ_SOCK_DIR.clone()
     }
 
     pub fn raw_zellij_path(&self) -> PathBuf {

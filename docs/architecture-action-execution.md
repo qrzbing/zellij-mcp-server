@@ -2,7 +2,7 @@
 
 - Status: Draft
 - Last Updated: 2026-03-06
-- Target Version: zellij-mcp-server 0.1.x / zellij 0.43.x
+- Target Version: zellij-mcp-server 1.0.x / zellij 0.44.x
 
 ## 1. Background
 
