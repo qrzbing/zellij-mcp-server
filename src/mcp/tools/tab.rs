@@ -6,7 +6,7 @@ use rmcp::{
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-use crate::mcp::ZellijMcpServer;
+use crate::{manager::ActionReplyMode, mcp::ZellijMcpServer, proto_ipc};
 
 // ============ Request Types ============
 
@@ -224,7 +224,11 @@ impl ZellijMcpServer {
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         let _op_guard = self.op_lock.lock().await;
         match self.manager.with_session(req.session_name, |mgr| {
-            mgr.send_action(zellij_utils::cli::CliAction::DumpLayout, None)
+            mgr.send_action(
+                vec![proto_ipc::dump_layout_action()],
+                ActionReplyMode::LogOnly,
+                None,
+            )
         }) {
             Ok(layout) => {
                 tracing::info!("Retrieved layout");

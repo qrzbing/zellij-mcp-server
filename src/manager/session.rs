@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeSet,
     os::unix::fs::FileTypeExt,
     path::{Path, PathBuf},
     process::{Command, Stdio},
@@ -8,9 +9,9 @@ use std::{
 
 use anyhow::Result;
 use tracing::debug;
-use zellij_utils::cli::CliAction;
 
-use super::ZellijSessionManager;
+use super::{ActionReplyMode, ZellijSessionManager};
+use crate::proto_ipc;
 
 impl ZellijSessionManager {
     /// Current Session Name
@@ -24,30 +25,24 @@ impl ZellijSessionManager {
     // }
 
     pub fn list_sessions(socket_path: &PathBuf) -> Result<Vec<String>> {
-        if !socket_path.exists() {
-            return Ok(Vec::new());
-        }
+        let mut sessions = BTreeSet::new();
 
-        let mut sessions = Vec::new();
-
-        for entry in std::fs::read_dir(&socket_path)? {
-            let entry = entry?;
-            let path = entry.path();
-            if let Ok(metadata) = std::fs::metadata(&path) {
-                if !metadata.file_type().is_socket() {
-                    continue;
-                }
-
-                if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                    let manager = Self::new(name.to_string(), path.clone())?;
-                    if manager.is_alive() {
-                        sessions.push(name.to_string());
-                    }
+        for candidate in Self::candidate_socket_paths(socket_path) {
+            if let Some(name) = candidate.file_name().and_then(|n| n.to_str()) {
+                let manager = Self::new(name.to_string(), candidate.clone())?;
+                if manager.is_alive() {
+                    sessions.insert(name.to_string());
                 }
             }
         }
 
-        Ok(sessions)
+        Ok(sessions.into_iter().collect())
+    }
+
+    pub fn find_session_socket(socket_dir: &Path, session_name: &str) -> Option<PathBuf> {
+        Self::candidate_socket_paths(socket_dir)
+            .into_iter()
+            .find(|path| path.file_name().and_then(|n| n.to_str()) == Some(session_name))
     }
 
     pub fn create_background_session(
@@ -55,9 +50,10 @@ impl ZellijSessionManager {
         socket_dir: &Path,
         session_name: &str,
     ) -> Result<bool> {
-        let socket_path = socket_dir.join(session_name);
-        if Self::session_socket_is_alive(session_name, &socket_path) {
-            return Ok(false);
+        if let Some(socket_path) = Self::find_session_socket(socket_dir, session_name) {
+            if Self::session_socket_is_alive(session_name, &socket_path) {
+                return Ok(false);
+            }
         }
 
         let mut child = Command::new(zellij_path)
@@ -71,12 +67,14 @@ impl ZellijSessionManager {
 
         let deadline = Instant::now() + Duration::from_secs(10);
         loop {
-            if Self::session_socket_is_alive(session_name, &socket_path) {
-                if child.try_wait()?.is_none() {
-                    let _ = child.kill();
-                    let _ = child.wait();
+            if let Some(socket_path) = Self::find_session_socket(socket_dir, session_name) {
+                if Self::session_socket_is_alive(session_name, &socket_path) {
+                    if child.try_wait()?.is_none() {
+                        let _ = child.kill();
+                        let _ = child.wait();
+                    }
+                    return Ok(true);
                 }
-                return Ok(true);
             }
 
             if let Some(status) = child.try_wait()? {
@@ -102,6 +100,60 @@ impl ZellijSessionManager {
         }
     }
 
+    fn candidate_search_roots(socket_dir: &Path) -> Vec<PathBuf> {
+        let mut roots = vec![socket_dir.to_path_buf()];
+
+        if socket_dir.file_name().and_then(|n| n.to_str()) != Some("zellij") {
+            if let Some(parent) = socket_dir.parent() {
+                roots.push(parent.to_path_buf());
+            }
+        }
+
+        roots
+    }
+
+    fn candidate_socket_paths(socket_dir: &Path) -> Vec<PathBuf> {
+        let mut candidates = Vec::new();
+        let mut seen = BTreeSet::new();
+
+        for root in Self::candidate_search_roots(socket_dir) {
+            if !root.exists() {
+                continue;
+            }
+
+            if let Ok(entries) = std::fs::read_dir(&root) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+
+                    if Self::is_socket_path(&path) && seen.insert(path.clone()) {
+                        candidates.push(path.clone());
+                    }
+
+                    if path.is_dir() {
+                        if let Ok(children) = std::fs::read_dir(&path) {
+                            for child in children.flatten() {
+                                let child_path = child.path();
+                                if Self::is_socket_path(&child_path)
+                                    && seen.insert(child_path.clone())
+                                {
+                                    candidates.push(child_path);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        candidates
+    }
+
+    fn is_socket_path(path: &Path) -> bool {
+        std::fs::metadata(path)
+            .map(|metadata| metadata.file_type().is_socket())
+            .unwrap_or(false)
+    }
+
     fn session_socket_is_alive(session_name: &str, socket_path: &Path) -> bool {
         if !socket_path.exists() {
             return false;
@@ -115,9 +167,8 @@ impl ZellijSessionManager {
     /// Rename the current session
     pub fn rename_session(&mut self, new_name: String) -> Result<()> {
         self.send_action(
-            CliAction::RenameSession {
-                name: new_name.clone(),
-            },
+            vec![proto_ipc::rename_session_action(new_name.clone())],
+            ActionReplyMode::UnblockOrLog,
             None,
         )?;
 

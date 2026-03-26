@@ -24,8 +24,9 @@ impl<'a> CliContext<'a> {
     }
 
     pub fn attach(&mut self, session_name: String) -> anyhow::Result<()> {
-        let manager =
-            ZellijSessionManager::new(session_name.clone(), self.socket_dir.join(&session_name))?;
+        let socket_path = ZellijSessionManager::find_session_socket(self.socket_dir, &session_name)
+            .ok_or_else(|| anyhow::anyhow!("Session '{}' not found", session_name))?;
+        let manager = ZellijSessionManager::new(session_name.clone(), socket_path)?;
         if !manager.is_alive() {
             anyhow::bail!("Session '{}' is not running", session_name);
         }

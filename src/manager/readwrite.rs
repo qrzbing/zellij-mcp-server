@@ -3,15 +3,13 @@ use std::{collections::BTreeSet, fs, path::PathBuf};
 use anyhow::Context;
 use chrono::Local;
 use tracing::debug;
-use zellij_utils::{
-    cli::CliAction,
-    data::{BareKey, KeyModifier},
-};
+use zellij_utils::data::{BareKey, KeyModifier};
 
 use super::{
-    ZellijSessionManager,
+    ActionReplyMode, ZellijSessionManager,
     utils::{format_key_name, parse_key_string, process_escape_sequences},
 };
+use crate::proto_ipc;
 
 #[derive(Debug, Copy, Clone)]
 pub enum DumpRange {
@@ -159,14 +157,16 @@ impl ZellijSessionManager {
 
     /// Write text directly to the pane (no escape sequence processing)
     pub fn write_to_pane(&self, text: String) -> anyhow::Result<()> {
-        let action = CliAction::WriteChars {
-            chars: text.clone(),
-            pane_id: None,
-        };
+        let action = vec![proto_ipc::write_chars_action(text.clone())];
         if self.has_active_ui_clients() {
-            self.send_action(action, None)?;
+            self.send_action(action, ActionReplyMode::UnblockOrLog, None)?;
         } else {
-            self.send_action_as_ui_client(action, None, self.preferred_tab_position())?;
+            self.send_action_as_ui_client(
+                action,
+                ActionReplyMode::UnblockOrLog,
+                None,
+                self.preferred_tab_position(),
+            )?;
         }
 
         debug!("Wrote to pane: {:?}", text);
@@ -175,14 +175,16 @@ impl ZellijSessionManager {
     }
 
     pub fn send_bytes(&self, bytes: Vec<u8>) -> anyhow::Result<()> {
-        let action = CliAction::Write {
-            bytes: bytes.clone(),
-            pane_id: None,
-        };
+        let action = vec![proto_ipc::write_action(bytes.clone())];
         if self.has_active_ui_clients() {
-            self.send_action(action, None)?;
+            self.send_action(action, ActionReplyMode::UnblockOrLog, None)?;
         } else {
-            self.send_action_as_ui_client(action, None, self.preferred_tab_position())?;
+            self.send_action_as_ui_client(
+                action,
+                ActionReplyMode::UnblockOrLog,
+                None,
+                self.preferred_tab_position(),
+            )?;
         }
         debug!("Sent bytes to pane: {:?}", bytes);
         Ok(())
@@ -213,18 +215,22 @@ impl ZellijSessionManager {
             ),
         };
 
-        let dump_action = CliAction::DumpScreen {
-            path: Some(dump_file_path.clone()),
-            full: true,
-            pane_id: None,
-            ansi: false,
-        };
+        let dump_action = vec![proto_ipc::dump_screen_action(
+            Some(dump_file_path.clone()),
+            true,
+            false,
+        )];
         if self.has_active_ui_clients() {
-            self.send_action(dump_action, None)
+            self.send_action(dump_action, ActionReplyMode::UnblockOrLog, None)
                 .with_context(err_context)?;
         } else {
-            self.send_action_as_ui_client(dump_action, None, self.preferred_tab_position())
-                .with_context(err_context)?;
+            self.send_action_as_ui_client(
+                dump_action,
+                ActionReplyMode::UnblockOrLog,
+                None,
+                self.preferred_tab_position(),
+            )
+            .with_context(err_context)?;
         }
 
         let content = fs::read_to_string(&dump_file_path)

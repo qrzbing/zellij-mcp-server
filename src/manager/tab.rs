@@ -3,9 +3,10 @@ use std::str::FromStr;
 use anyhow::{Result, bail};
 use kdl::KdlDocument;
 use tracing::{debug, warn};
-use zellij_utils::{cli::CliAction, data::ClientId};
+use zellij_utils::data::ClientId;
 
-use super::ZellijSessionManager;
+use super::{ActionReplyMode, ZellijSessionManager};
+use crate::proto_ipc;
 
 impl ZellijSessionManager {
     fn tab_position_from_names(tabs: &[String], tab_name: &str) -> Option<usize> {
@@ -21,23 +22,16 @@ impl ZellijSessionManager {
     }
 
     pub fn new_tab(&mut self, name: Option<String>) -> Result<Option<String>> {
-        let action = CliAction::NewTab {
-            layout: None,
-            layout_dir: None,
-            name: name.clone(),
-            cwd: None,
-            initial_command: Vec::new(),
-            initial_plugin: None,
-            close_on_exit: false,
-            start_suspended: false,
-            block_until_exit_success: false,
-            block_until_exit_failure: false,
-            block_until_exit: false,
-        };
+        let action = vec![proto_ipc::new_tab_action(name.clone(), None)?];
         if self.has_active_ui_clients() {
-            self.send_action(action, None)?;
+            self.send_action(action, ActionReplyMode::UnblockOrLog, None)?;
         } else {
-            self.send_action_as_ui_client(action, None, self.preferred_tab_position())?;
+            self.send_action_as_ui_client(
+                action,
+                ActionReplyMode::UnblockOrLog,
+                None,
+                self.preferred_tab_position(),
+            )?;
         }
 
         debug!("Created new tab: {:?}", name);
@@ -48,11 +42,16 @@ impl ZellijSessionManager {
     }
 
     pub fn close_tab(&mut self) -> Result<()> {
-        let action = CliAction::CloseTab { tab_id: None };
+        let action = vec![proto_ipc::close_tab_action()];
         if self.has_active_ui_clients() {
-            self.send_action(action, None)?;
+            self.send_action(action, ActionReplyMode::UnblockOrLog, None)?;
         } else {
-            self.send_action_as_ui_client(action, None, self.preferred_tab_position())?;
+            self.send_action_as_ui_client(
+                action,
+                ActionReplyMode::UnblockOrLog,
+                None,
+                self.preferred_tab_position(),
+            )?;
         }
 
         debug!("Closed current tab");
@@ -106,7 +105,11 @@ impl ZellijSessionManager {
     }
 
     fn list_client_ids(&self) -> Result<Vec<ClientId>> {
-        let clients_str = self.send_action(CliAction::ListClients, None)?;
+        let clients_str = self.send_action(
+            vec![proto_ipc::list_clients_action()],
+            ActionReplyMode::LogOnly,
+            None,
+        )?;
         Ok(Self::extract_client_ids_from_list_clients(&clients_str))
     }
 
@@ -121,7 +124,11 @@ impl ZellijSessionManager {
     }
 
     pub fn list_tabs(&self) -> Result<Vec<String>> {
-        let tab_names_str = self.send_action(CliAction::QueryTabNames, None)?;
+        let tab_names_str = self.send_action(
+            vec![proto_ipc::query_tab_names_action()],
+            ActionReplyMode::LogOnly,
+            None,
+        )?;
         let tab_names: Vec<String> = tab_names_str
             .lines()
             .map(|s| s.trim().to_string())
@@ -132,7 +139,11 @@ impl ZellijSessionManager {
     }
 
     pub fn refresh_current_tab(&mut self) -> Result<Option<String>> {
-        let layout = self.send_action(CliAction::DumpLayout, None)?;
+        let layout = self.send_action(
+            vec![proto_ipc::dump_layout_action()],
+            ActionReplyMode::LogOnly,
+            None,
+        )?;
         let tab_name = Self::extract_focused_tab_kdl(&layout)?;
 
         // In headless mode, DumpLayout can omit focused tab. Keep the previous
@@ -156,12 +167,9 @@ impl ZellijSessionManager {
             );
         }
 
-        let switch_action = CliAction::GoToTabName {
-            name: tab_name.clone(),
-            create: false,
-        };
+        let switch_action = vec![proto_ipc::go_to_tab_name_action(tab_name.clone(), false)];
         if self.has_active_ui_clients() {
-            self.send_action(switch_action, None)?;
+            self.send_action(switch_action, ActionReplyMode::UnblockOrLog, None)?;
             let current = self.refresh_current_tab()?;
             if current.as_deref() != Some(tab_name.as_str()) {
                 let current = current.unwrap_or_else(|| "<none>".to_string());
@@ -175,7 +183,12 @@ impl ZellijSessionManager {
             // In headless mode there is no persistent active client; keep an internal tab hint
             // so subsequent write/dump operations can focus this tab on attach.
             let tab_position_to_focus = Self::tab_position_from_names(&tabs, &tab_name);
-            self.send_action_as_ui_client(switch_action, None, tab_position_to_focus)?;
+            self.send_action_as_ui_client(
+                switch_action,
+                ActionReplyMode::UnblockOrLog,
+                None,
+                tab_position_to_focus,
+            )?;
             self.current_tab_name = Some(tab_name.clone());
         }
 
@@ -186,14 +199,16 @@ impl ZellijSessionManager {
 
     /// Rename the current tab
     pub fn rename_tab(&mut self, new_name: String) -> Result<()> {
-        let action = CliAction::RenameTab {
-            name: new_name.clone(),
-            tab_id: None,
-        };
+        let action = proto_ipc::rename_current_tab_actions(new_name.clone());
         if self.has_active_ui_clients() {
-            self.send_action(action, None)?;
+            self.send_action(action, ActionReplyMode::UnblockOrLog, None)?;
         } else {
-            self.send_action_as_ui_client(action, None, self.preferred_tab_position())?;
+            self.send_action_as_ui_client(
+                action,
+                ActionReplyMode::UnblockOrLog,
+                None,
+                self.preferred_tab_position(),
+            )?;
         }
 
         self.current_tab_name = Some(new_name.clone());
@@ -205,11 +220,16 @@ impl ZellijSessionManager {
 
     /// Undo tab rename (restore to default name like "Tab #1")
     pub fn undo_rename_tab(&mut self) -> Result<()> {
-        let action = CliAction::UndoRenameTab { tab_id: None };
+        let action = vec![proto_ipc::undo_rename_tab_action()];
         if self.has_active_ui_clients() {
-            self.send_action(action, None)?;
+            self.send_action(action, ActionReplyMode::UnblockOrLog, None)?;
         } else {
-            self.send_action_as_ui_client(action, None, self.preferred_tab_position())?;
+            self.send_action_as_ui_client(
+                action,
+                ActionReplyMode::UnblockOrLog,
+                None,
+                self.preferred_tab_position(),
+            )?;
         }
 
         self.refresh_current_tab()?;

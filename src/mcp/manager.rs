@@ -38,10 +38,9 @@ impl SessionManager {
             anyhow::bail!("Already attached to session '{}'", session_name);
         }
 
-        let socket_path = self.socket_dir.join(&session_name);
-        if !socket_path.exists() {
-            anyhow::bail!("Session '{}' not found", session_name);
-        }
+        let socket_path =
+            ZellijSessionManager::find_session_socket(&self.socket_dir, &session_name)
+                .ok_or_else(|| anyhow::anyhow!("Session '{}' not found", session_name))?;
 
         let manager = ZellijSessionManager::new(session_name.clone(), socket_path)?;
         if !manager.is_alive() {

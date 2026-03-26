@@ -1,30 +1,10 @@
 use anyhow::{Context, Result};
 use tracing::{debug, warn};
-use zellij_utils::{
-    cli::CliAction,
-};
 
-use super::ZellijSessionManager;
+use super::{ActionReplyMode, ZellijSessionManager};
 use crate::proto_ipc;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ActionReplyMode {
-    /// `Log` / `LogError` / `Exit` 才结束，忽略 `UnblockInputThread`
-    LogOnly,
-    /// `UnblockInputThread` 或 `Log` 都可以结束
-    UnblockOrLog,
-}
-
 impl ZellijSessionManager {
-    fn reply_mode_for(cli_action: &CliAction) -> ActionReplyMode {
-        match cli_action {
-            CliAction::QueryTabNames | CliAction::DumpLayout | CliAction::ListClients => {
-                ActionReplyMode::LogOnly
-            }
-            _ => ActionReplyMode::UnblockOrLog,
-        }
-    }
-
     fn wait_action_result(
         conn: &mut proto_ipc::ProtoIpcConnection,
         mode: ActionReplyMode,
@@ -145,7 +125,10 @@ impl ZellijSessionManager {
                     if alive {
                         debug!("Session '{}' is alive", session_name);
                     } else {
-                        warn!("Unexpected response to ConnStatus for session '{}'", session_name);
+                        warn!(
+                            "Unexpected response to ConnStatus for session '{}'",
+                            session_name
+                        );
                     }
                     alive
                 }
@@ -170,20 +153,17 @@ impl ZellijSessionManager {
         }
     }
 
-    pub fn send_action(&self, cli_action: CliAction, terminal_id: Option<u32>) -> Result<String> {
+    pub(crate) fn send_action(
+        &self,
+        actions: Vec<proto_ipc::Action>,
+        reply_mode: ActionReplyMode,
+        terminal_id: Option<u32>,
+    ) -> Result<String> {
         let mut conn = self.connect_proto()?;
-        let reply_mode = Self::reply_mode_for(&cli_action);
 
         let result = (|| {
-            let actions = proto_ipc::actions_from_cli(cli_action)?;
-
             for action in actions {
-                conn.send_client_msg(&proto_ipc::action_request(
-                    action,
-                    terminal_id,
-                    None,
-                    true,
-                ))
+                conn.send_client_msg(&proto_ipc::action_request(action, terminal_id, None, true))
                     .context("Failed to send action message")?;
             }
 
@@ -201,14 +181,14 @@ impl ZellijSessionManager {
     /// 从而让 `DumpScreen`、`GoToTabName` 等依赖 `active_tab_indices` 的操作能正常工作。
     ///
     /// 副作用：短暂触发一次 resize（使用 9999x9999 大尺寸，不会缩小真实终端）。
-    pub fn send_action_as_ui_client(
+    pub(crate) fn send_action_as_ui_client(
         &self,
-        cli_action: CliAction,
+        actions: Vec<proto_ipc::Action>,
+        reply_mode: ActionReplyMode,
         terminal_id: Option<u32>,
         tab_position_to_focus: Option<usize>,
     ) -> Result<String> {
         let mut conn = self.connect_proto()?;
-        let reply_mode = Self::reply_mode_for(&cli_action);
 
         let result = (|| {
             // Step 1: 注册为 UI 客户端
@@ -217,21 +197,14 @@ impl ZellijSessionManager {
                 std::env::current_dir().ok(),
                 tab_position_to_focus,
             )?)
-                .context("Failed to send AttachClient")?;
+            .context("Failed to send AttachClient")?;
 
             // Step 2: attach barrier - 显式等待 attach 阶段完成，避免依赖 sleep
             Self::wait_attach_barrier(&mut conn)?;
 
             // Step 3: 发送实际 action
-            let actions = proto_ipc::actions_from_cli(cli_action)?;
-
             for action in actions {
-                conn.send_client_msg(&proto_ipc::action_request(
-                    action,
-                    terminal_id,
-                    None,
-                    false,
-                ))
+                conn.send_client_msg(&proto_ipc::action_request(action, terminal_id, None, false))
                     .context("Failed to send action message")?;
             }
 

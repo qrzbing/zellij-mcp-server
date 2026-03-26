@@ -11,6 +11,14 @@ mod utils;
 // Re-export utility functions for use in other modules
 pub use utils::{format_key_name, parse_key_string};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ActionReplyMode {
+    /// `Log` / `LogError` / `Exit` 才结束，忽略 `UnblockInputThread`
+    LogOnly,
+    /// `UnblockInputThread` 或 `Log` 都可以结束
+    UnblockOrLog,
+}
+
 #[derive(Debug, Clone)]
 pub struct ZellijSessionManager {
     /// Session Name

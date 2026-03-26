@@ -3,11 +3,11 @@ use std::path::PathBuf;
 use anyhow::{Context, Ok};
 use clap::{Parser, Subcommand};
 use colored::Colorize;
-use zellij_utils::cli::CliAction;
 
 use crate::{
     interactive::context::CliContext,
     manager::{self, readwrite::DumpRange},
+    proto_ipc,
 };
 
 mod readwrite;
@@ -301,7 +301,11 @@ impl CommandExecutor {
         let manager = context
             .manager()
             .with_context(|| "Failed to retrieve manager context")?;
-        let layout = manager.send_action(CliAction::DumpLayout, None)?;
+        let layout = manager.send_action(
+            vec![proto_ipc::dump_layout_action()],
+            crate::manager::ActionReplyMode::LogOnly,
+            None,
+        )?;
 
         println!("{}", "Layout:".bold());
         println!("{}", layout);
