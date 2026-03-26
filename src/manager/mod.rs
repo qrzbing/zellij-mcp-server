@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use tracing::{debug, warn};
+use tracing::debug;
 
 mod middleware;
 pub mod readwrite;
@@ -33,20 +33,13 @@ impl ZellijSessionManager {
             session_name, socket_path
         );
 
-        let mut mgr = Self {
+        let mgr = Self {
             session_name: session_name.clone(),
             socket_path,
             current_tab_name: None,
             dump_screen_dir: None,
             last_dump_message: None,
         };
-
-        if let Err(e) = mgr.refresh_current_tab() {
-            warn!(
-                "Failed to initialize tab information for session '{}': {}",
-                session_name, e
-            );
-        }
 
         debug!("Current panel: {:?}", mgr.current_tab_name());
 

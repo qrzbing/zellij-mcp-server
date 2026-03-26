@@ -3791,6 +3791,7 @@ dependencies = [
  "kdl",
  "log",
  "openssl-sys",
+ "prost",
  "rmcp",
  "rustyline",
  "schemars",

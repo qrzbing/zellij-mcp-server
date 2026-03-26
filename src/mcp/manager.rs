@@ -173,6 +173,37 @@ impl SessionManager {
         f(mgr)
     }
 
+    pub fn rename_session(&self, name_opt: Option<String>, new_name: String) -> Result<()> {
+        let old_name = self.resolve_name(name_opt)?;
+        let mut instances = self.instances.lock().unwrap();
+
+        if old_name != new_name && instances.contains_key(&new_name) {
+            anyhow::bail!("Session '{}' is already attached", new_name);
+        }
+
+        let mut mgr = instances
+            .remove(&old_name)
+            .ok_or_else(|| anyhow::anyhow!("Session '{}' not attached", old_name))?;
+
+        match mgr.rename_session(new_name.clone()) {
+            Ok(()) => {
+                instances.insert(new_name.clone(), mgr);
+            }
+            Err(e) => {
+                instances.insert(old_name.clone(), mgr);
+                return Err(e);
+            }
+        }
+        drop(instances);
+
+        let mut current = self.current_session.lock().unwrap();
+        if current.as_deref() == Some(old_name.as_str()) {
+            *current = Some(new_name);
+        }
+
+        Ok(())
+    }
+
     // Set log directory for a session, modifying the stored instance directly
     pub fn set_session_log_dir(&self, name_opt: Option<String>, dir: PathBuf) -> Result<()> {
         let name = match name_opt {

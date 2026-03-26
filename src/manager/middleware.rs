@@ -2,13 +2,10 @@ use anyhow::{Context, Result};
 use tracing::{debug, warn};
 use zellij_utils::{
     cli::CliAction,
-    consts::ipc_connect,
-    input::{actions::Action, cli_assets::CliAssets},
-    ipc::{ClientToServerMsg, IpcReceiverWithContext, IpcSenderWithContext, ServerToClientMsg},
-    pane_size::Size,
 };
 
 use super::ZellijSessionManager;
+use crate::proto_ipc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ActionReplyMode {
@@ -29,14 +26,14 @@ impl ZellijSessionManager {
     }
 
     fn wait_action_result(
-        receiver: &mut IpcReceiverWithContext<ServerToClientMsg>,
+        conn: &mut proto_ipc::ProtoIpcConnection,
         mode: ActionReplyMode,
         label: &str,
     ) -> Result<String> {
         let mut output = String::new();
         loop {
-            match receiver.recv_server_msg() {
-                Some((ServerToClientMsg::UnblockInputThread, _)) => {
+            match conn.recv_server_msg()?.message {
+                Some(proto_ipc::ProtoServerMessage::UnblockInputThread(_)) => {
                     if mode == ActionReplyMode::UnblockOrLog {
                         debug!("{label} completed on UnblockInputThread");
                         break;
@@ -45,25 +42,25 @@ impl ZellijSessionManager {
                     }
                 }
 
-                Some((ServerToClientMsg::Log { lines }, _)) => {
-                    let log_output = lines.join("\n");
+                Some(proto_ipc::ProtoServerMessage::Log(log)) => {
+                    let log_output = log.lines.join("\n");
                     debug!("{label} received log output: {}", log_output);
                     output.push_str(&log_output);
                     break;
                 }
 
-                Some((ServerToClientMsg::LogError { lines }, _)) => {
-                    let error_output = lines.join("\n");
+                Some(proto_ipc::ProtoServerMessage::LogError(log_error)) => {
+                    let error_output = log_error.lines.join("\n");
                     anyhow::bail!("{label} error: {}", error_output);
                 }
 
-                Some((ServerToClientMsg::Exit { exit_reason }, _)) => {
-                    use zellij_utils::ipc::ExitReason;
-                    match exit_reason {
-                        ExitReason::Error(e) => {
-                            anyhow::bail!("{label} exited with error: {}", e);
+                Some(proto_ipc::ProtoServerMessage::Exit(exit)) => {
+                    match proto_ipc::ProtoExitReason::from_i32(exit.exit_reason) {
+                        Some(proto_ipc::ProtoExitReason::Error) => {
+                            let error = exit.payload.unwrap_or_else(|| "unknown error".to_string());
+                            anyhow::bail!("{label} exited with error: {}", error);
                         }
-                        _ => {
+                        Some(_) | None => {
                             debug!("{label} completed with exit");
                             break;
                         }
@@ -75,28 +72,28 @@ impl ZellijSessionManager {
                     anyhow::bail!("Connection closed before action completed");
                 }
 
-                Some((msg, _)) => {
-                    debug!("{label} ignoring message: {:?}", msg);
+                Some(_) => {
+                    debug!("{label} ignoring non-terminal response");
                 }
             }
         }
         Ok(output)
     }
 
-    fn wait_attach_barrier(receiver: &mut IpcReceiverWithContext<ServerToClientMsg>) -> Result<()> {
+    fn wait_attach_barrier(conn: &mut proto_ipc::ProtoIpcConnection) -> Result<()> {
         loop {
-            match receiver.recv_server_msg() {
-                Some((ServerToClientMsg::UnblockInputThread, _)) => {
+            match conn.recv_server_msg()?.message {
+                Some(proto_ipc::ProtoServerMessage::UnblockInputThread(_)) => {
                     debug!("Attach barrier completed on UnblockInputThread");
                     break;
                 }
-                Some((ServerToClientMsg::Exit { exit_reason }, _)) => {
-                    use zellij_utils::ipc::ExitReason;
-                    match exit_reason {
-                        ExitReason::Error(e) => {
-                            anyhow::bail!("Attach failed with error: {}", e);
+                Some(proto_ipc::ProtoServerMessage::Exit(exit)) => {
+                    match proto_ipc::ProtoExitReason::from_i32(exit.exit_reason) {
+                        Some(proto_ipc::ProtoExitReason::Error) => {
+                            let error = exit.payload.unwrap_or_else(|| "unknown error".to_string());
+                            anyhow::bail!("Attach failed with error: {}", error);
                         }
-                        _ => {
+                        Some(_) | None => {
                             debug!("Attach barrier completed with exit");
                             break;
                         }
@@ -106,21 +103,16 @@ impl ZellijSessionManager {
                     warn!("Attach barrier connection closed unexpectedly");
                     anyhow::bail!("Connection closed before attach completed");
                 }
-                Some((msg, _)) => {
+                Some(_) => {
                     // Attach 期间可能收到 Render/Log 等消息，这里仅作为 barrier 消耗掉
-                    debug!("Attach barrier ignoring message: {:?}", msg);
+                    debug!("Attach barrier ignoring non-terminal response");
                 }
             }
         }
         Ok(())
     }
 
-    pub(super) fn connect(
-        &self,
-    ) -> Result<(
-        IpcSenderWithContext<ClientToServerMsg>,
-        IpcReceiverWithContext<ServerToClientMsg>,
-    )> {
+    fn connect_proto(&self) -> Result<proto_ipc::ProtoIpcConnection> {
         if !self.socket_path.exists() {
             anyhow::bail!(
                 "Session '{}' socket does not exist: {:?}",
@@ -129,7 +121,7 @@ impl ZellijSessionManager {
             );
         }
 
-        let stream = ipc_connect(&self.socket_path).context(format!(
+        let conn = proto_ipc::ProtoIpcConnection::connect(&self.socket_path).context(format!(
             "Failed to connect to session '{}' at {:?}",
             self.session_name, self.socket_path
         ))?;
@@ -139,10 +131,7 @@ impl ZellijSessionManager {
             self.session_name, self.socket_path
         );
 
-        let sender = IpcSenderWithContext::<ClientToServerMsg>::new(stream);
-        let receiver = sender.get_receiver();
-
-        Ok((sender, receiver))
+        Ok(conn)
     }
 
     pub fn is_alive(&self) -> bool {
@@ -151,30 +140,14 @@ impl ZellijSessionManager {
         let (tx, rx) = std::sync::mpsc::channel();
 
         std::thread::spawn(move || {
-            let alive = match ipc_connect(&socket_path) {
-                Ok(stream) => {
-                    let mut sender = IpcSenderWithContext::<ClientToServerMsg>::new(stream);
-                    if let Err(e) = sender.send_client_msg(ClientToServerMsg::ConnStatus) {
-                        warn!("Failed to send ConnStatus: {}", e);
-                        false
+            let alive = match proto_ipc::probe_session(&socket_path) {
+                Ok(alive) => {
+                    if alive {
+                        debug!("Session '{}' is alive", session_name);
                     } else {
-                        let mut receiver: IpcReceiverWithContext<ServerToClientMsg> =
-                            sender.get_receiver();
-                        match receiver.recv_server_msg() {
-                            Some((ServerToClientMsg::Connected, _)) => {
-                                debug!("Session '{}' is alive", session_name);
-                                true
-                            }
-                            Some((msg, _)) => {
-                                warn!("Unexpected response to ConnStatus: {:?}", msg);
-                                false
-                            }
-                            None => {
-                                warn!("No response to ConnStatus");
-                                false
-                            }
-                        }
+                        warn!("Unexpected response to ConnStatus for session '{}'", session_name);
                     }
+                    alive
                 }
                 Err(e) => {
                     debug!("Failed to connect to session '{}': {}", session_name, e);
@@ -198,32 +171,26 @@ impl ZellijSessionManager {
     }
 
     pub fn send_action(&self, cli_action: CliAction, terminal_id: Option<u32>) -> Result<String> {
-        let (mut sender, mut receiver) = self.connect()?;
+        let mut conn = self.connect_proto()?;
         let reply_mode = Self::reply_mode_for(&cli_action);
 
         let result = (|| {
-            let actions = Action::actions_from_cli(
-                cli_action,
-                Box::new(|| std::env::current_dir().unwrap_or_default()),
-                None,
-            )
-            .map_err(|e| anyhow::anyhow!("Failed to convert action: {}", e))?;
+            let actions = proto_ipc::actions_from_cli(cli_action)?;
 
             for action in actions {
-                sender
-                    .send_client_msg(ClientToServerMsg::Action {
-                        action,
-                        terminal_id,
-                        client_id: None,
-                        is_cli_client: true,
-                    })
+                conn.send_client_msg(&proto_ipc::action_request(
+                    action,
+                    terminal_id,
+                    None,
+                    true,
+                ))
                     .context("Failed to send action message")?;
             }
 
-            Self::wait_action_result(&mut receiver, reply_mode, "Action")
+            Self::wait_action_result(&mut conn, reply_mode, "Action")
         })();
 
-        let _ = sender.send_client_msg(ClientToServerMsg::ClientExited);
+        let _ = conn.send_client_msg(&proto_ipc::client_exited_request());
 
         result
     }
@@ -240,57 +207,40 @@ impl ZellijSessionManager {
         terminal_id: Option<u32>,
         tab_position_to_focus: Option<usize>,
     ) -> Result<String> {
-        let (mut sender, mut receiver) = self.connect()?;
+        let mut conn = self.connect_proto()?;
         let reply_mode = Self::reply_mode_for(&cli_action);
-        let cli_assets = CliAssets {
-            terminal_window_size: Size {
-                rows: 4096,
-                cols: 4096,
-            },
-            cwd: std::env::current_dir().ok(),
-            ..Default::default()
-        };
 
         let result = (|| {
             // Step 1: 注册为 UI 客户端
             // 使用超大尺寸，确保 min_client_terminal_size() 不会影响其他已连接的真实终端
-            sender
-                .send_client_msg(ClientToServerMsg::AttachClient {
-                    cli_assets: cli_assets.clone(),
-                    tab_position_to_focus,
-                    pane_to_focus: None,
-                    is_web_client: false,
-                })
+            conn.send_client_msg(&proto_ipc::attach_client_request(
+                std::env::current_dir().ok(),
+                tab_position_to_focus,
+            )?)
                 .context("Failed to send AttachClient")?;
 
             // Step 2: attach barrier - 显式等待 attach 阶段完成，避免依赖 sleep
-            Self::wait_attach_barrier(&mut receiver)?;
+            Self::wait_attach_barrier(&mut conn)?;
 
             // Step 3: 发送实际 action
-            let actions = Action::actions_from_cli(
-                cli_action,
-                Box::new(|| std::env::current_dir().unwrap_or_default()),
-                None,
-            )
-            .map_err(|e| anyhow::anyhow!("Failed to convert action: {}", e))?;
+            let actions = proto_ipc::actions_from_cli(cli_action)?;
 
             for action in actions {
-                sender
-                    .send_client_msg(ClientToServerMsg::Action {
-                        action,
-                        terminal_id,
-                        client_id: None,
-                        is_cli_client: false,
-                    })
+                conn.send_client_msg(&proto_ipc::action_request(
+                    action,
+                    terminal_id,
+                    None,
+                    false,
+                ))
                     .context("Failed to send action message")?;
             }
 
             // Step 4: 按 action 语义等待响应
-            Self::wait_action_result(&mut receiver, reply_mode, "UI action")
+            Self::wait_action_result(&mut conn, reply_mode, "UI action")
         })();
 
         // Step 5: 正确退出，服务端移除我们的状态并触发 resize 恢复
-        let _ = sender.send_client_msg(ClientToServerMsg::ClientExited);
+        let _ = conn.send_client_msg(&proto_ipc::client_exited_request());
 
         result
     }

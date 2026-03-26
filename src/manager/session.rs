@@ -113,13 +113,21 @@ impl ZellijSessionManager {
     }
 
     /// Rename the current session
-    pub fn rename_session(&self, new_name: String) -> Result<()> {
+    pub fn rename_session(&mut self, new_name: String) -> Result<()> {
         self.send_action(
             CliAction::RenameSession {
                 name: new_name.clone(),
             },
             None,
         )?;
+
+        let socket_dir = self
+            .socket_path
+            .parent()
+            .map(Path::to_path_buf)
+            .ok_or_else(|| anyhow::anyhow!("Session socket has no parent directory"))?;
+        self.session_name = new_name.clone();
+        self.socket_path = socket_dir.join(&new_name);
 
         debug!("Renamed session to: {}", new_name);
 

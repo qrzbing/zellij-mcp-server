@@ -11,6 +11,7 @@ interprocess = { version = "2.2", default-features = false, features = ["tokio"]
 kdl = { version = "4.5.0", default-features = false, features = ["span"] }
 log = "0.4.0"
 openssl-sys = { version = "0.9.93", features = ["vendored"] }
+prost = "0.11.9"
 schemars = { version = "1.2.0", features = ["chrono04"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0.149"

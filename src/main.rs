@@ -12,6 +12,7 @@ mod cli;
 mod interactive;
 mod manager;
 mod mcp;
+mod proto_ipc;
 
 use cli::ZellijConfig;
 use interactive::InteractiveCli;

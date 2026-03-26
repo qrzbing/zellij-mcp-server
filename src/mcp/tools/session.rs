@@ -232,9 +232,8 @@ impl ZellijMcpServer {
         let new_name = req.new_name.clone();
         match self
             .manager
-            .with_session(req.session_name.clone(), move |mgr| {
-                mgr.rename_session(new_name)
-            }) {
+            .rename_session(req.session_name.clone(), new_name)
+        {
             Ok(_) => {
                 tracing::info!("Renamed to '{}'", req.new_name);
                 Ok(CallToolResult::success(vec![Content::text(format!(
