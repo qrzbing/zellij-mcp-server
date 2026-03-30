@@ -1,9 +1,9 @@
 use std::path::PathBuf;
 
 use anyhow::Result;
+pub use zellij_utils::client_server_contract::client_server_contract::{self as contract, Action};
 
 use super::messages::path_to_string;
-use super::types::{Action, contract};
 
 fn action(action_type: contract::action::ActionType) -> Action {
     Action {

@@ -29,10 +29,9 @@ pub(crate) fn write_protobuf_message<T: Message>(writer: &mut impl Write, msg: &
 #[cfg(test)]
 mod tests {
     use std::io::Cursor;
+    use zellij_utils::client_server_contract::client_server_contract::ClientToServerMsg as ProtoClientToServerMsg;
 
-    use crate::proto_ipc::{
-        ProtoClientToServerMsg, conn_status_request, read_protobuf_message, write_protobuf_message,
-    };
+    use crate::proto_ipc::{conn_status_request, read_protobuf_message, write_protobuf_message};
 
     #[test]
     fn length_prefixed_proto_roundtrip_works() {

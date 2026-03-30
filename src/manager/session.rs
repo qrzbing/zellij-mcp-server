@@ -1,5 +1,6 @@
 use std::{
     collections::BTreeSet,
+    env,
     os::unix::fs::FileTypeExt,
     path::{Path, PathBuf},
     process::{Command, Stdio},
@@ -9,6 +10,7 @@ use std::{
 
 use anyhow::Result;
 use tracing::debug;
+use zellij_utils::consts::CLIENT_SERVER_CONTRACT_DIR;
 
 use super::{ActionReplyMode, ZellijSessionManager};
 use crate::proto_ipc;
@@ -56,23 +58,38 @@ impl ZellijSessionManager {
             }
         }
 
+        let socket_dir = Self::socket_dir_for_creation(socket_dir);
+        std::fs::create_dir_all(&socket_dir)?;
+        let socket_path = socket_dir.join(session_name);
+
         let mut child = Command::new(zellij_path)
-            .arg("attach")
-            .arg("--create-background")
-            .arg(session_name)
+            .arg("--server")
+            .arg(&socket_path)
+            .env("ZELLIJ", "0")
+            .env("ZELLIJ_SESSION_NAME", session_name)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()?;
 
         let deadline = Instant::now() + Duration::from_secs(10);
+        let mut initialized = false;
         loop {
-            if let Some(socket_path) = Self::find_session_socket(socket_dir, session_name) {
-                if Self::session_socket_is_alive(session_name, &socket_path) {
-                    if child.try_wait()?.is_none() {
-                        let _ = child.kill();
-                        let _ = child.wait();
+            if !initialized {
+                match proto_ipc::ProtoIpcConnection::connect(&socket_path) {
+                    Ok(mut conn) => {
+                        conn.send_client_msg(&proto_ipc::first_client_connected_request(
+                            env::current_dir().ok(),
+                        ))?;
+                        initialized = true;
                     }
+                    Err(_) => {}
+                }
+            }
+
+            if let Some(socket_path) = Self::find_session_socket(&socket_dir, session_name) {
+                if Self::session_socket_is_alive(session_name, &socket_path) {
+                    let _ = child.try_wait();
                     return Ok(true);
                 }
             }
@@ -80,7 +97,7 @@ impl ZellijSessionManager {
             if let Some(status) = child.try_wait()? {
                 if !status.success() {
                     anyhow::bail!(
-                        "Failed to create session '{}': zellij exited with status {}",
+                        "Failed to create session '{}': zellij server exited with status {}",
                         session_name,
                         status
                     );
@@ -88,15 +105,13 @@ impl ZellijSessionManager {
             }
 
             if Instant::now() >= deadline {
-                let _ = child.kill();
-                let _ = child.wait();
                 anyhow::bail!(
                     "Timed out waiting for session '{}' to become available",
                     session_name
                 );
             }
 
-            thread::sleep(Duration::from_millis(100));
+            thread::sleep(Duration::from_millis(10));
         }
     }
 
@@ -146,6 +161,26 @@ impl ZellijSessionManager {
         }
 
         candidates
+    }
+
+    fn socket_dir_for_creation(socket_dir: &Path) -> PathBuf {
+        let contract_dir = CLIENT_SERVER_CONTRACT_DIR.as_str();
+
+        if socket_dir.file_name().and_then(|n| n.to_str()) == Some(contract_dir) {
+            return socket_dir.to_path_buf();
+        }
+
+        if socket_dir.file_name().and_then(|n| n.to_str()) == Some("zellij") {
+            return socket_dir.join(contract_dir);
+        }
+
+        if let Some(parent) = socket_dir.parent() {
+            if parent.file_name().and_then(|n| n.to_str()) == Some("zellij") {
+                return parent.join(contract_dir);
+            }
+        }
+
+        socket_dir.to_path_buf()
     }
 
     fn is_socket_path(path: &Path) -> bool {

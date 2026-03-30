@@ -5,13 +5,15 @@ use std::{
 
 use anyhow::{Context, Result};
 use interprocess::{TryClone, local_socket::Stream as LocalSocketStream};
-use zellij_utils::consts::ipc_connect;
+use zellij_utils::{
+    client_server_contract::client_server_contract::{ClientToServerMsg, ServerToClientMsg},
+    consts::ipc_connect,
+};
 
 use super::{
     client_exited_request, conn_status_request, is_connected_message, read_protobuf_message,
     write_protobuf_message,
 };
-use crate::proto_ipc::{ClientToServerMsg, ServerToClientMsg};
 
 pub struct ProtoIpcConnection {
     reader: BufReader<LocalSocketStream>,

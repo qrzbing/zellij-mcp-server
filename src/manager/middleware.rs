@@ -1,8 +1,12 @@
 use anyhow::{Context, Result};
 use tracing::{debug, warn};
+use zellij_utils::client_server_contract::client_server_contract::Action;
+use zellij_utils::client_server_contract::client_server_contract::server_to_client_msg::Message as ProtoServerMessage;
+use zellij_utils::client_server_contract::client_server_contract::ExitReason as ProtoExitReason;
+
+use crate::proto_ipc;
 
 use super::{ActionReplyMode, ZellijSessionManager};
-use crate::proto_ipc;
 
 impl ZellijSessionManager {
     fn wait_action_result(
@@ -13,7 +17,7 @@ impl ZellijSessionManager {
         let mut output = String::new();
         loop {
             match conn.recv_server_msg()?.message {
-                Some(proto_ipc::ProtoServerMessage::UnblockInputThread(_)) => {
+                Some(ProtoServerMessage::UnblockInputThread(_)) => {
                     if mode == ActionReplyMode::UnblockOrLog {
                         debug!("{label} completed on UnblockInputThread");
                         break;
@@ -22,21 +26,21 @@ impl ZellijSessionManager {
                     }
                 }
 
-                Some(proto_ipc::ProtoServerMessage::Log(log)) => {
+                Some(ProtoServerMessage::Log(log)) => {
                     let log_output = log.lines.join("\n");
                     debug!("{label} received log output: {}", log_output);
                     output.push_str(&log_output);
                     break;
                 }
 
-                Some(proto_ipc::ProtoServerMessage::LogError(log_error)) => {
+                Some(ProtoServerMessage::LogError(log_error)) => {
                     let error_output = log_error.lines.join("\n");
                     anyhow::bail!("{label} error: {}", error_output);
                 }
 
-                Some(proto_ipc::ProtoServerMessage::Exit(exit)) => {
-                    match proto_ipc::ProtoExitReason::from_i32(exit.exit_reason) {
-                        Some(proto_ipc::ProtoExitReason::Error) => {
+                Some(ProtoServerMessage::Exit(exit)) => {
+                    match ProtoExitReason::from_i32(exit.exit_reason) {
+                        Some(ProtoExitReason::Error) => {
                             let error = exit.payload.unwrap_or_else(|| "unknown error".to_string());
                             anyhow::bail!("{label} exited with error: {}", error);
                         }
@@ -63,13 +67,13 @@ impl ZellijSessionManager {
     fn wait_attach_barrier(conn: &mut proto_ipc::ProtoIpcConnection) -> Result<()> {
         loop {
             match conn.recv_server_msg()?.message {
-                Some(proto_ipc::ProtoServerMessage::UnblockInputThread(_)) => {
+                Some(ProtoServerMessage::UnblockInputThread(_)) => {
                     debug!("Attach barrier completed on UnblockInputThread");
                     break;
                 }
-                Some(proto_ipc::ProtoServerMessage::Exit(exit)) => {
-                    match proto_ipc::ProtoExitReason::from_i32(exit.exit_reason) {
-                        Some(proto_ipc::ProtoExitReason::Error) => {
+                Some(ProtoServerMessage::Exit(exit)) => {
+                    match ProtoExitReason::from_i32(exit.exit_reason) {
+                        Some(ProtoExitReason::Error) => {
                             let error = exit.payload.unwrap_or_else(|| "unknown error".to_string());
                             anyhow::bail!("Attach failed with error: {}", error);
                         }
@@ -155,7 +159,7 @@ impl ZellijSessionManager {
 
     pub(crate) fn send_action(
         &self,
-        actions: Vec<proto_ipc::Action>,
+        actions: Vec<Action>,
         reply_mode: ActionReplyMode,
         terminal_id: Option<u32>,
     ) -> Result<String> {
@@ -183,7 +187,7 @@ impl ZellijSessionManager {
     /// 副作用：短暂触发一次 resize（使用 9999x9999 大尺寸，不会缩小真实终端）。
     pub(crate) fn send_action_as_ui_client(
         &self,
-        actions: Vec<proto_ipc::Action>,
+        actions: Vec<Action>,
         reply_mode: ActionReplyMode,
         terminal_id: Option<u32>,
         tab_position_to_focus: Option<usize>,

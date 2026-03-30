@@ -2,11 +2,11 @@ use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 
-use super::types::{
+use zellij_utils::client_server_contract::client_server_contract::{
     Action, ActionMsg, AttachClientMsg, CliAssets, ClientToServerMsg, ConnStatusMsg,
-    ServerToClientMsg, Size, client_to_server_msg, server_to_client_msg,
+    FirstClientConnectedMsg, ServerToClientMsg, Size, client_to_server_msg, self as contract,
+    server_to_client_msg,
 };
-use crate::proto_ipc::contract;
 
 const UI_ATTACH_COLS: u32 = 4096;
 const UI_ATTACH_ROWS: u32 = 4096;
@@ -21,6 +21,21 @@ pub fn client_exited_request() -> ClientToServerMsg {
     ClientToServerMsg {
         message: Some(client_to_server_msg::Message::ClientExited(
             contract::ClientExitedMsg {},
+        )),
+    }
+}
+
+pub fn first_client_connected_request(cwd: Option<PathBuf>) -> ClientToServerMsg {
+    ClientToServerMsg {
+        message: Some(client_to_server_msg::Message::FirstClientConnected(
+            FirstClientConnectedMsg {
+                cli_assets: Some(CliAssets {
+                    terminal_window_size: Some(Size { cols: 50, rows: 50 }),
+                    cwd: cwd.map(path_to_string),
+                    ..Default::default()
+                }),
+                is_web_client: false,
+            },
         )),
     }
 }
@@ -84,19 +99,21 @@ pub(crate) fn path_to_string(path: PathBuf) -> String {
 
 #[cfg(test)]
 mod tests {
-    use crate::proto_ipc::client_to_server_msg;
-    use crate::proto_ipc::server_to_client_msg;
     use crate::proto_ipc::{
-        ConnectedMsg, LogMsg, ProtoServerMessage, ProtoServerToClientMsg, ServerToClientMsg,
         action_request, client_exited_request, dump_layout_action, is_connected_message,
     };
+    use zellij_utils::client_server_contract::client_server_contract::{
+        ConnectedMsg, LogMsg, ServerToClientMsg, client_to_server_msg,
+        server_to_client_msg
+    };
+    use zellij_utils::client_server_contract::client_server_contract::server_to_client_msg::Message as ProtoServerMessage;
 
     #[test]
     fn connected_helper_matches_only_connected() {
         let connected = ServerToClientMsg {
             message: Some(server_to_client_msg::Message::Connected(ConnectedMsg {})),
         };
-        let log = ProtoServerToClientMsg {
+        let log = ServerToClientMsg {
             message: Some(ProtoServerMessage::Log(LogMsg {
                 lines: vec!["x".to_string()],
             })),
